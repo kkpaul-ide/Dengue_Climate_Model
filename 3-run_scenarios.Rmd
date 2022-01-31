@@ -1,0 +1,97 @@
+# Run different scenarios
+```{run scenarios}
+# Full run model
+
+dat <- list()
+
+for (ii in 1:sims) {
+  print(ii)
+  for (jj in 1:length(rcpOptions)) {
+    print(jj)
+    for (kk in 1:length(gcmOptions)) {
+      print(kk)
+    
+      # Big list storing all the results
+      dat[[ii]][[rcpOptions[jj]]][[gcmOptions[kk]]] <- den_model(project = pg, 
+        params = paramset[ii], 
+        data = climateData[[c(jj,kk)]], 
+        initial_conditions, dengue_entry, model = modelSpecs)
+                        
+    }
+  }
+}
+```
+
+```{run scenarios}
+# Full run model
+
+dat <- list()
+
+for (ii in 1:sims) {
+  print(ii)
+  for (jj in 1:length(gcmOptions)) {
+    print(jj)
+    for (kk in 1:length(rcpOptions)) {
+      print(kk)
+      out <- list()
+      climateData2 <- subset(climateData, source == gcmOptions[jj] & scenario == rcpOptions[kk])
+      if (length(climateData2$tdate)==0) next
+      parameters <- param_sets[ii,]
+      parameters$influx <- 0
+    
+      # Big list storing all the results
+      out <- den_model(project = pg, 
+        params = parameters, 
+        data = climateData2, 
+        initial_conditions, 
+        option = pg$model[2])
+      out$tdate <- climateData2$tdate
+      out$source <- gcmOptions[jj]
+      out$scenario <- rcpOptions[kk]
+      
+      dat <- bind_rows(dat, out)
+                        
+    }
+  }
+}
+
+dat$source_scenario <- ifelse(dat$source == "Observed", paste(dat$source), paste(dat$source, dat$scenario, sep = " "))
+
+```
+
+```{r Produce plots, echo=FALSE}
+ggplot(dat) +
+        geom_line(aes(x=time,y=Nh, group=source_scenario, color=source_scenario))
+
+ggplot(dat) +
+        geom_line(aes(x=time,y=s_h, group=source_scenario, color=source_scenario))
+
+ggplot(dat) +
+        geom_line(aes(x=time,y=i_h1, group=source_scenario, color=source_scenario))
+
+ggplot(dat) +
+        geom_line(aes(x=time,y=Nv, group=source_scenario, color=source_scenario))
+
+ggplot(dat) +
+        geom_line(aes(x=time,y=s_v, group=source_scenario, color=source_scenario))
+
+ggplot(dat) +
+        geom_line(aes(x=time,y=i_v1, group=source_scenario, color=source_scenario))
+
+ggplot(dat) +
+        geom_line(aes(x=time,y=i_h1, group=source_scenario, color=source_scenario))
+
+# +
+#         labs(x = "Year",y = "Vectorial Capacity (per day)")+
+#         geom_line(data = av_line, aes(x=year,y=mean)) +
+#         facet_grid(division ~ rcp, scales = "free_x", space = "free_x")+
+#         geom_hline(data = div_avg, aes(yintercept = mean), linetype="dashed")+
+#         #scale_x_continuous(breaks = seq(1950,2100,10)) +
+#         theme_bw() +
+#         theme(legend.title = element_blank(),
+#               legend.text = element_text(size=8),
+#               legend.position="top",
+#               axis.text.x = element_text(size=8),
+#               axis.text.y = element_text(size=8))
+
+```

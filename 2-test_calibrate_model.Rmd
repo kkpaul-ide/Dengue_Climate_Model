@@ -1,0 +1,163 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+# Simulate dengue model - Test and calibrate model
+# ================================================
+
+This Rmarkdown script is used to simulate the specified dengue model 
+with the saved input parameters and data.
+
+```{r Setup, echo=FALSE}
+# Restart R and set working directory to source file; i.e. rm(list=ls()) 
+
+# Packages ----------------------------------------------------------------
+require(tidyverse, quietly = TRUE)
+# require(readr)
+require(lubridate)
+require(LeftysRpkg)
+
+source("code/functions.R")
+
+# Set-up directories ------------------------------------------------------
+basePath <- getwd()
+# dataPath <- file.path(basePath, "data")
+outputsPath <- file.path(basePath, "outputs")
+
+```
+
+
+```{r Specify and load project, echo=FALSE}
+
+# Model project name
+project <- "testing_base"
+
+# Load project and model
+projectFolder <- file.path(outputsPath, project)
+load(file.path(projectFolder, "Project_specifications.Rda"))
+load(file.path(projectFolder, "Model_inputs.Rda"))
+
+```
+
+```{r Source model, echo=FALSE}
+if (pg$model[1] == "caldwell") {
+  source("code/den_model_caldwell-RTG.R")
+  den_model <- den_model_Caldwell
+} else if (pg$model[1] == "lee") {
+  source("code/den_model_lee.R")
+} else {
+  source("code/den_model.R")
+}
+
+```
+
+```{r Simulate model, echo=FALSE}
+
+# Load original default parameters
+parameters <- param_sets[1,]
+
+# Adjust parameters for testing as required
+parameters$pMI_c <- 3.4e-4
+parameters$pIM_c <- 1.45e-3
+parameters$influx <- 0
+
+# Simulate model
+dat <- den_model(pg, parameters, climateData[climateData$source=="GFDL-ESM2M" & climateData$scenario=="RCP 8.5",], initial_conditions, 
+  option = pg$model[2])
+
+# Aggregate and check results ---------------------------------------------
+
+if (pg$model[1] == "base"){
+  dat$seroPrev <- (dat$Nh-dat$s_h)*100/dat$Nh
+} else if (pg$model[1] == "caldwell") {
+  dat$seroPrev <- (dat$e_h + dat$i_h + dat$r)*100/dat$Nh
+}
+
+# n <- 24;
+dat <- aggregate(dat, list(rep(1:(nrow(dat) %/% (1/pg$dt) + 1), each = 1/pg$dt, 
+  len = nrow(dat))), mean)[-1]
+dat$newInfections <- 24*dat$newInfections
+dat$days <- 1:nrow(dat)
+# dat$date <- dhk_clim$date[1:nrow(dat)]
+
+annInfections <- aggregate(dat$newInfections, 
+  list(rep(1:(nrow(dat) %/% 365 + 1), each = 365, 
+  len = nrow(dat))), sum)[-1] %>%
+  mutate(year = pg$startYear+1:nrow(.)) %>%
+  rename(infections = x)
+
+# Produce some plots
+dat$seroPrev[pg$pts[pg$pts_times == as_datetime("2055-12-31")]]
+
+
+```
+
+```{r Produce plots, echo=FALSE}
+# Plots should go into a function so you can see a heap of stuff
+# E.g. calibrationPlots(dat,....)
+
+ptsPlots <- c(0.5*365,4.5*365,8.5*365,12.5*365,16.5*365,20.5*365)
+ggplot(dat, aes(x=days)) +
+  geom_line(aes(y = s_h), colour="black")+
+  geom_line(aes(y = r_h1), colour="blue")+
+  geom_line(aes(y= i_h1), colour="red")+
+  geom_line(aes(y=Nh),colour="green")+
+  theme_bw()+
+  scale_x_continuous(breaks = ptsPlots, 
+                      labels = c("1995", "1999", "2003", "2007", "2011", "2015")) +
+  coord_cartesian(xlim = c(1, ptsPlots[6])) +
+  xlab("") + ylab("Number of population") +
+  ggtitle("Default parameter values, no immigration/emigration, new strain introduced in 1995") +
+  PlotOptions()
+
+ggplot(dat, aes(x=days)) +
+  geom_line(aes(y = e_v1), colour="black")+
+  geom_line(aes(y = i_v1), colour="red")+
+  theme_bw()+
+  scale_x_continuous(breaks = ptsPlots, 
+                      labels = c("1995", "1999", "2003", "2007", "2011", "2015")) +
+  coord_cartesian(xlim = c(1, ptsPlots[6])) +
+  xlab("") + ylab("Mosquito population") +
+  PlotOptions()
+
+ggplot(dat, aes(x=days)) +
+  geom_line(aes(y = Nv), colour="black")+
+  theme_bw()+
+  scale_x_continuous(breaks = ptsPlots, 
+                      labels = c("1995", "1999", "2003", "2007", "2011", "2015")) +
+  coord_cartesian(xlim = c(1, ptsPlots[6])) +
+  xlab("") + ylab("Mosquito population") +
+  PlotOptions()
+
+# ptsPlots <- c(1*365,3*365,5*365,7*365,9*365)
+
+ggplot(dat, aes(x = days)) +
+    geom_line(aes(y = newInfections), colour="black") +
+    theme_bw() +
+    scale_x_continuous(breaks = ptsPlots, 
+      labels = c("1995", "1999", "2003", "2007", "2011", "2015")) +
+    coord_cartesian(xlim = c(1, ptsPlots[6])) +
+    xlab("") + ylab("Daily dengue infections") + 
+    ggtitle("Default parameter values, no immigration/emigration, new strain introduced in 1995") +
+    PlotOptions()
+
+mosPts <- c(5*365,6*365)
+    
+ggplot(dat, aes(x = days)) + 
+  geom_line(aes(y = Nv), colour="black") +
+    theme_bw() +
+    scale_x_continuous(breaks = mosPts, 
+      labels = c("2010", "2011")) +
+    coord_cartesian(xlim = c(mosPts[1], mosPts[2]), ylim = c(0,1.5e+7)) +
+    xlab("") + ylab("Number of adult mosquitoes") + 
+    ggtitle("Mosquito population size over a year") +
+    PlotOptions()
+
+
+ggplot(annInfections, aes(x = year)) +
+    geom_line(aes(y = infections), colour="black") +
+    theme_bw()
+```
+
+

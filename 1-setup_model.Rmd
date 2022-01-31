@@ -1,0 +1,200 @@
+# Simulate dengue model - Setup specific model
+# ============================================
+
+This Rmarkdown script is used to set-up a specific dengue model parameters. 
+
+```{r Setup}
+# Restart R and set working directory to source file; i.e. rm(list=ls()) 
+
+# Packages ----------------------------------------------------------------
+require(tidyverse, quietly = TRUE)
+# require(readr)
+# require(lubridate)
+
+source("code/functions.R")
+
+# Set-up directories ------------------------------------------------------
+basePath <- getwd()
+# dataPath <- file.path(basePath, "data")
+outputsPath <- file.path(basePath, "outputs")
+
+```
+
+```{r Specify and load project}
+
+# Model project name
+project <- "testing_base"
+
+# Load project
+projectFolder <- file.path(outputsPath, project)
+load(file.path(projectFolder, "Project_specifications.Rda"))
+
+# Set-seed for random sampling if required
+# 
+
+```
+
+
+```{r Set-up parameters}
+
+# Read in parameter files and convert to appropriate values at each time 
+# point
+
+params <- read.csv(file.path(projectFolder, "parameters.csv"))
+
+paramstype <- params %>% select(parameter, type)
+paramsEstimate <- params2df(params, "value") 
+paramsLower <- params2df(params, "lower")
+paramsUpper <- params2df(params, "upper")
+
+if (pg$modelSpecs[1] == "base") {
+  modelParams <- read.csv(file.path(projectFolder, "base_parameters.csv"))
+  
+  paramstype <- paramstype %>%
+    bind_rows(modelParams %>% select(parameter, type))
+  
+  modelValue <- modelParams %>%
+    params2df("value")
+
+    # Adjust and append to parameters
+  paramsEstimate <- paramsEstimate %>%
+    bind_cols(modelValue)
+  
+} else if (pg$modelSpecs[1] == "caldwell") {
+  modelParams <- read.csv(file.path(projectFolder, "caldwell_parameters.csv")) 
+
+  paramstype <- paramstype %>%
+    bind_rows(modelParams %>% select(parameter, type))
+  
+  modelValue <- modelParams %>%
+    filter(!(parameter == "Kthr")) %>%
+    mutate(value = as.numeric(value)) %>%
+    params2df("value") %>%
+    mutate(Kthr = filter(modelParams, parameter == "Kthr")$value)
+  
+  # TODO lower and upper values with Kthr the same for each
+  
+  # Adjust and append to parameters
+  paramsEstimate <- paramsEstimate %>%
+    bind_cols(modelValue) 
+  
+}
+
+# Loop over number of sims and samples
+
+#### I would make a function that converts all the parameters into 
+#### appropriate time points and values - 
+#### setupmodel(params, project)
+
+if (pg$model[2] %in% c("difference", "stochastic")) {
+  
+  # fixed parameters - SHOULDNT These be in parameters?  
+  # params$ie, paramsBR, params$DR???      
+  
+  # ie  <- rep(1 - exp(- 0.01* dt), npts) # Why need to be repeated??
+  # 
+  # BR <- rep(1 - exp(-(5.121/(1000*360))* dt),npts)
+  # 
+  # DR <- rep(1 - exp(-(5.121/(1000*360))* dt), npts)
+  
+  rates <- filter(paramstype, type == "rate")$parameter
+  paramsRates <- select(paramsEstimate, one_of(rates))
+  # Convert rates per day to probabilities per day
+  paramsRates <- data.frame(lapply(paramsRates, function(x) prob(x, pg$dt)))
+  
+  paramsEstimate <- paramsEstimate %>%
+    select(-one_of(rates)) %>%
+    bind_cols(paramsRates)
+  
+  param_sets <- paramsEstimate
+  
+  # Repeat for lower and upper
+  
+  # Convert rates per day to probabilities per day for using difference equation
+  #### ARE ALL THE FUNCTION PARAMTERS HERE IN params?
+  
+  # a <- 1 - exp(-a_t(temp) * dt)
+  # 
+  # PDR <- 1 - exp(-PDR_t(temp) * dt)
+  # 
+  # muv <- 1 - exp(-muv_th(temp,hum) * dt)
+  # 
+  # LMR <- 1 - exp(-LMR_t(temp) * dt)
+  # 
+  # PMR <- 1 - exp(-PMR_t(temp) * dt)
+  # 
+  # mul_tr <- 1 - exp(-mul_tr_t(temp,rain) * dt)
+  # 
+  # mup_tr <- 1 - exp(-mup_tr_t(temp,rain) * dt)
+  # 
+  # EFD <- 1 - exp(-EFD_t(temp) * dt)
+  
+} else {
+  # Leave parameters as rates       
+}
+
+# NEED TO ADD SAMPLING FROM parameter ranges
+
+
+# Store all parameter sets in a parameter sets variable. 
+
+param_sets <- paramsEstimate %>%
+  mutate(set = 0) %>%
+  select(set, everything())
+
+```
+
+```{r Initial populations}
+
+#### POTENTIALLY PUT INTO ANOTHER CSV FILE OR STORE IN PARAMS. 
+
+# Set-up infected inputs to reflect migration
+
+entry_h1 <- rep(0,pg$npts)
+entry_h2 <- rep(0,pg$npts)
+
+
+# Will need to put this into the model equations.
+entry_h1[1] <- 10
+entry_h2[pg$pts[pg$pts_times == lubridate::as_datetime("2004-01-01")]] <- 1 
+# Corresponds to start of 2004
+
+dengue_entry <- list()
+dengue_entry$entry_h1 <- entry_h1
+dengue_entry$entry_h2 <- entry_h2
+
+
+# Put s_v and s_h into the parameters file
+# Set-up initial conditions
+# initial_conditions <- data.frame("s_l"=0, "i_l1"=0, "i_l2"=0, "s_p"=0, "i_p1"=0, "i_p2"=0,
+#                                  "s_v"=1600000,"e_v1"=0,"e_v2"=0,"i_v1"=0,"i_v2"=0,
+#                                  "s_h"=8332000,"e_h1"=0,"e_h2"=0,"i_h1"=entry_h1[1],"i_h2"=entry_h2[1],"ci_h1"=0,
+#                                  "ci_h2"=0,"r_h1"=0,"r_h2"=0,"e_h12"=0,"e_h21"=0,"i_h12"=0,"i_h21"=0,"r"=0)
+
+initialPop <- 8332000 # params$pop 
+initialVector <- 2*initialPop #params$m*initialPop
+
+if (pg$modelSpecs[1] == "caldwell") {
+  
+  initial_conditions <- data.frame("s_v"=initialVector,"e_v"=0,"i_v"=0,
+                                 "s_h"=initialPop,"e_h"=0,"i_h"=10,"r"=0)
+} else if (pg$modelSpecs[1] == "base"){
+  
+  initial_conditions <- data.frame("s_l"=0, "i_l1"=0, "i_l2"=0, "s_p"=0, "i_p1"=0, "i_p2"=0,
+                                 "s_v"=initialVector,"e_v1"=0,"e_v2"=0,"i_v1"=0,"i_v2"=0,
+                                 "s_h"=initialPop,"e_h1"=0,"e_h2"=0,"i_h1"=1,"i_h2"=0,"ci_h1"=0,
+                                 "ci_h2"=0,"r_h1"=0,"r_h2"=0,"e_h12"=0,"e_h21"=0,"i_h12"=0,"i_h21"=0,"r"=0)
+  
+}
+
+```
+
+
+```{r Save model inputs}
+# Save model inputs 
+save(params, modelParams, param_sets, initial_conditions, #dengue_entry, 
+        file = file.path(projectFolder, "Model_inputs.Rda"))
+
+
+```
+

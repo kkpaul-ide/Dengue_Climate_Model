@@ -1,8 +1,3 @@
----
-output:
-  pdf_document: default
-  html_document: default
----
 # Simulate dengue model - Test and calibrate model
 # ================================================
 
@@ -14,11 +9,14 @@ with the saved input parameters and data.
 
 # Packages ----------------------------------------------------------------
 require(tidyverse, quietly = TRUE)
-# require(readr)
 require(lubridate)
 require(LeftysRpkg)
+require(cowplot)
+
 
 source("code/functions.R")
+# source("code/PlotOptions.R") 
+source("code/ResultFunctions.R") 
 
 # Set-up directories ------------------------------------------------------
 basePath <- getwd()
@@ -26,7 +24,6 @@ basePath <- getwd()
 outputsPath <- file.path(basePath, "outputs")
 
 ```
-
 
 ```{r Specify and load project, echo=FALSE}
 
@@ -47,49 +44,61 @@ if (pg$model[1] == "caldwell") {
 } else if (pg$model[1] == "lee") {
   source("code/den_model_lee.R")
 } else {
-  source("code/den_model.R")
+  source("code/den_model-RTG.R")
 }
 
 ```
 
 ```{r Simulate model, echo=FALSE}
 
-# Load original default parameters
+# Load original default parameters 
 parameters <- param_sets[1,]
 
 # Adjust parameters for testing as required
-parameters$pMI_c <- 3.4e-4
-parameters$pIM_c <- 1.45e-3
-parameters$influx <- 0
+parameters$start1 <- 1995
+parameters$start2 <- 2005
+parameters$influx1 <- 1
+parameters$influx2 <- 0
+parameters$cfactor <- 0.625
+
+# Once best parameters are fitted these need to be saved back in the project by 
+# re-runing set-up model
 
 # Simulate model
-dat <- den_model(pg, parameters, climateData[climateData$source=="GFDL-ESM2M" & climateData$scenario=="RCP 8.5",], initial_conditions, 
-  option = pg$model[2])
+datModels <- list()
 
-# Aggregate and check results ---------------------------------------------
-
-if (pg$model[1] == "base"){
-  dat$seroPrev <- (dat$Nh-dat$s_h)*100/dat$Nh
-} else if (pg$model[1] == "caldwell") {
-  dat$seroPrev <- (dat$e_h + dat$i_h + dat$r)*100/dat$Nh
+for (ii in unique(climateData$source)) {
+  print(ii)
+  print(Sys.time())apply(array, margin, ...)
+  tempScenario <- ifelse(ii == "Observed", "Observed", "RCP 8.5")
+  datModels[[ii]]$results <- den_model(pg, parameters, 
+    climateData[climateData$source== ii & climateData$scenario==tempScenario,], 
+    initial_conditions, 
+    option = pg$model[2])
+  datModels[[ii]]$scenario <- tempScenario
+  datModels[[ii]]$source <- ii
+  
 }
 
-# n <- 24;
-dat <- aggregate(dat, list(rep(1:(nrow(dat) %/% (1/pg$dt) + 1), each = 1/pg$dt, 
-  len = nrow(dat))), mean)[-1]
-dat$newInfections <- 24*dat$newInfections
-dat$days <- 1:nrow(dat)
-# dat$date <- dhk_clim$date[1:nrow(dat)]
+# Aggregate and check results --------------------------------------------------
 
-annInfections <- aggregate(dat$newInfections, 
-  list(rep(1:(nrow(dat) %/% 365 + 1), each = 365, 
-  len = nrow(dat))), sum)[-1] %>%
-  mutate(year = pg$startYear+1:nrow(.)) %>%
-  rename(infections = x)
+# Adjust the data into a daily format
+adjustedDat <- list()
 
-# Produce some plots
-dat$seroPrev[pg$pts[pg$pts_times == as_datetime("2055-12-31")]]
+for (ii in unique(climateData$source)) {
+  adjustedDat[[ii]] <- AdjustResults(datModels[[ii]]$results,
+    datModels[[ii]]$source, datModels[[ii]]$sceanrio, pg)
+}
 
+# Convert lists into date frames - will get a warning but no issue 
+datDf <- unnest(enframe(map(adjustedDat, "dat"))) %>%
+  rename("model" = name)
+annInfectionsDf <- unnest(enframe(map(adjustedDat, "annInfections"))) %>%
+  rename("model" = name)
+monthInfectionsDf <- unnest(enframe(map(adjustedDat, "monthInfections"))) %>%
+  rename("model" = name)
+seroprevDf <- unnest(enframe(map(adjustedDat, "seroprev"))) %>%
+  rename("model" = name)
 
 ```
 
@@ -97,67 +106,92 @@ dat$seroPrev[pg$pts[pg$pts_times == as_datetime("2055-12-31")]]
 # Plots should go into a function so you can see a heap of stuff
 # E.g. calibrationPlots(dat,....)
 
-ptsPlots <- c(0.5*365,4.5*365,8.5*365,12.5*365,16.5*365,20.5*365)
-ggplot(dat, aes(x=days)) +
+monthlyDiagnoses <- read.csv(file.path(getwd(), "data", "Monthly_dengue_cases_2000-2019.csv")) %>%
+  mutate(time = Year + Month/12)
+
+graphics.off()
+
+# Plot specifications
+yearPoints <- c(0.5,4.5,8.5,12.5,16.5,20.5)
+yearLabels <- c("1990", "1994", "1998", "2002", "2006", "2010")
+ptsPlots <- yearPoints*365
+
+# Plots
+seroPlot <- ggplot(datDf, aes(x=days, group = model)) +
   geom_line(aes(y = s_h), colour="black")+
   geom_line(aes(y = r_h1), colour="blue")+
   geom_line(aes(y= i_h1), colour="red")+
-  geom_line(aes(y=Nh),colour="green")+
-  theme_bw()+
+  geom_line(aes(y=Nh),colour="darkgreen")+
+  geom_pointrange(aes(x = days[pg$pts[pg$pts_times == as_datetime("2013-12-31")]], 
+    y = 0.5*Nh[pg$pts[pg$pts_times == as_datetime("2013-12-31")]],
+    ymin = 0.3*Nh[pg$pts[pg$pts_times == as_datetime("2013-12-31")]],
+    ymax = 0.8*Nh[pg$pts[pg$pts_times == as_datetime("2013-12-31")]],
+    colour="orange")) + 
+  # theme_bw()+ Not needed if you use PlotOptions()
   scale_x_continuous(breaks = ptsPlots, 
-                      labels = c("1995", "1999", "2003", "2007", "2011", "2015")) +
+    labels = yearLabels) +
   coord_cartesian(xlim = c(1, ptsPlots[6])) +
   xlab("") + ylab("Number of population") +
-  ggtitle("Default parameter values, no immigration/emigration, new strain introduced in 1995") +
+  ggtitle("Population size and seroprevalence") +
   PlotOptions()
 
-ggplot(dat, aes(x=days)) +
-  geom_line(aes(y = e_v1), colour="black")+
-  geom_line(aes(y = i_v1), colour="red")+
-  theme_bw()+
+mosPlot <- ggplot(datDf, aes(x=days, colour = model)) +
+  geom_line(aes(y = Nv))+
   scale_x_continuous(breaks = ptsPlots, 
-                      labels = c("1995", "1999", "2003", "2007", "2011", "2015")) +
+    labels = yearLabels) +
   coord_cartesian(xlim = c(1, ptsPlots[6])) +
   xlab("") + ylab("Mosquito population") +
   PlotOptions()
 
-ggplot(dat, aes(x=days)) +
-  geom_line(aes(y = Nv), colour="black")+
-  theme_bw()+
+infectionsPlot <- ggplot(datDf, aes(x = days, colour = model)) +
+  geom_line(aes(y = newInfections)) +
   scale_x_continuous(breaks = ptsPlots, 
-                      labels = c("1995", "1999", "2003", "2007", "2011", "2015")) +
+    labels = yearLabels) +
   coord_cartesian(xlim = c(1, ptsPlots[6])) +
-  xlab("") + ylab("Mosquito population") +
+  xlab("") + ylab("Daily dengue infections") + 
+  ggtitle("Best fit parameter values") +
   PlotOptions()
 
-# ptsPlots <- c(1*365,3*365,5*365,7*365,9*365)
+annInfectionsPlot <- ggplot(annInfectionsDf, aes(x = year, colour = name)) +
+  geom_line(aes(y = infections)) +
+  scale_x_continuous(breaks = annInfections$year[1] - 1 + yearPoints, 
+    labels = yearLabels) +
+  coord_cartesian(xlim = annInfections$year[1] - 1 + c(1, yearPoints[6])) +
+  xlab("") + ylab("Annual number of infections") + 
+  PlotOptions()
 
-ggplot(dat, aes(x = days)) +
-    geom_line(aes(y = newInfections), colour="black") +
-    theme_bw() +
-    scale_x_continuous(breaks = ptsPlots, 
-      labels = c("1995", "1999", "2003", "2007", "2011", "2015")) +
-    coord_cartesian(xlim = c(1, ptsPlots[6])) +
-    xlab("") + ylab("Daily dengue infections") + 
-    ggtitle("Default parameter values, no immigration/emigration, new strain introduced in 1995") +
-    PlotOptions()
+monthlyDiagnosesPlot <- ggplot(monthlyDiagnoses, aes(x = Year+Month/12)) +
+  geom_line(aes(y = Den_cases), colour="black") +
+  xlab("") + ylab("Dengue diagnoses per month") + 
+  coord_cartesian(xlim = c(1995, 2015), ylim = c(0, 5e3)) +
+  PlotOptions()
 
-mosPts <- c(5*365,6*365)
-    
-ggplot(dat, aes(x = days)) + 
-  geom_line(aes(y = Nv), colour="black") +
-    theme_bw() +
-    scale_x_continuous(breaks = mosPts, 
-      labels = c("2010", "2011")) +
-    coord_cartesian(xlim = c(mosPts[1], mosPts[2]), ylim = c(0,1.5e+7)) +
-    xlab("") + ylab("Number of adult mosquitoes") + 
-    ggtitle("Mosquito population size over a year") +
-    PlotOptions()
+monthlyInfectionsPlot <- ggplot(monthInfectionsDf, 
+  aes(x = year + month/12, colour = model)) +
+  geom_line(aes(y = infections)) +
+  xlab("") + ylab("Dengue infections per month") + 
+  coord_cartesian(xlim = c(1995, 2015), ylim = c(0, 6e5)) +
+  PlotOptions()
 
+monthlyInfectionsPlotZoom <- ggplot(monthInfectionsDf, 
+  aes(x = year + month/12, colour = model)) +
+  geom_line(aes(y = infections)) +
+   geom_line(data = monthlyDiagnoses, 
+     aes(x = Year+Month/12, y = Den_cases), colour="black") +
+  xlab("") + ylab("Number per month") + 
+  coord_cartesian(xlim = c(1995, 2015), ylim = c(0, 1e4)) +
+  PlotOptions()
 
-ggplot(annInfections, aes(x = year)) +
-    geom_line(aes(y = infections), colour="black") +
-    theme_bw()
+# Combined plots
+
+monthlyInfections <- plot_grid(monthlyDiagnosesPlot, monthlyInfectionsPlot, 
+  monthlyInfectionsPlotZoom)
+
+plot_grid(mosPlot, infectionsPlot)
+
+ggsave(file.path(projectFolder, "results", "monthlyInfections.png"),
+  monthlyInfections, width = 32, height = 20, units = "cm")
+
 ```
 
 

@@ -72,14 +72,29 @@ den_model <- function(project, params, data, initial_conditions,
     mup_tr <- 1 - exp(-mup_tr_t(temp,rain) * dt)
     EFD <- 1 - exp(-EFD_t(temp) * dt)
     
-    # Birth rate and death per 1000 er year
-    BR <- rep(1 - exp(-(params$BR/(1000*360))*dt),time)
-    DR <- rep(1 - exp(-(params$DR/(1000*360))* dt), time)
+    # Birth rate and death per 1000 per year
     
-    # inflow and outflow per day
+    # TODO: Instead of BR calculate number of births from pop size needed and 
+    # Deaths
+    BR <- rep(1 - exp(-(pg$birthRate/(1000*360))* pg$dt),each=(pg$npts/length(pg$birthRate)))
+    DR <- rep(1 - exp(-(pg$deathRate/(1000*360))* pg$dt),each=(pg$npts/length(pg$deathRate)))
+    # BR <- rep(1 - exp(-(params$BR/(1000*360))* dt), time)
+    # DR <- rep(1 - exp(-(params$DR/(1000*360))* dt), time)
+    
+    # inflow and outflow per day - adjust influx for start 
+    # time of first and second strain. 
     im  <- rep(params$im, time)
-    em <- im
-    influx <- rep(params$influx, time)
+    em <- rep(params$em, time)
+    influx1 <- rep(params$influx1 * dt, time)
+    influx2 <- rep(params$influx2 * dt, time)
+    
+    influx1[project$pts_times < lubridate::as_datetime(paste0(params$start1, "-01-01"))] <- 0
+    influx2[project$pts_times < lubridate::as_datetime(paste0(params$start2, "-01-01"))] <- 0
+    influx1[project$pts_times == lubridate::as_datetime(paste0(params$start1, "-01-01"))] <- 1
+    influx2[project$pts_times == lubridate::as_datetime(paste0(params$start2, "-01-01"))] <- 1
+    
+    # Carrying capacity multiplication factor
+    cf <- params$cfactor
     
     # Set-up initial conditions
     s_l[1] <- initial_conditions$s_l
@@ -111,21 +126,25 @@ den_model <- function(project, params, data, initial_conditions,
     Nl[1] <- s_l[1] + i_l1[1] + i_l2[1]
     Np[1] <- s_p[1] + i_p1[1] + i_p2[1]
     Nv[1] <- s_v[1] + e_v1[1] + e_v2[1] + i_v1[1] + i_v2[1]
-    Nh[1] <- s_h[1] + e_h1[1] + e_h2[1] + i_h1[1] + i_h2[1] + ci_h1[1] +  ci_h2[1] + r_h1[1] + r_h2[1] + e_h12[1] + e_h21[1] + i_h12[1] + i_h21[1] +  r[1]
+    Nh[1] <- s_h[1] + e_h1[1] + e_h2[1] + i_h1[1] + i_h2[1] + ci_h1[1] +  
+      ci_h2[1] + r_h1[1] + r_h2[1] + e_h12[1] + e_h21[1] + i_h12[1] + 
+      i_h21[1] +  r[1]
     
     for (tt in 2:time) {
       
+      # newpop[tt] <- PopSize[tt] - Nh[tt-1] - allDeaths[tt-1]
+      
       # Calculate time-varying non-vectorised parameters
-      pMItt <- pMI(temp[tt], pMI_T0=params$pMI_T0, pMI_Tm=params$pMI_Tm, 
+      pMItt <- params$betaMI * pMI(temp[tt], pMI_T0=params$pMI_T0, pMI_Tm=params$pMI_Tm, 
                    pMI_m=params$pMI_m, pMI_c=params$pMI_c)
-      pIMtt <- pIM(temp[tt], pIM_T0=params$pIM_T0, pIM_Tm=params$pIM_Tm, 
+      pIMtt <- params$betaIM * pIM(temp[tt], pIM_T0=params$pIM_T0, pIM_Tm=params$pIM_Tm, 
                    pIM_m=params$pIM_m, pIM_c=params$pIM_c)
       FELtt <- FEL(rain[tt])
       
       # mosquito population dynamics
-      s_l[tt] <- s_l[tt-1] + (EFD[tt]*FELtt*max((1-Nl[tt-1]/(Nh[tt-1]*C_t(rain[tt]))),0)*0.5*Nv[tt-1])*(1 - params$nu*(i_v1[tt-1] + i_v2[tt-1])/Nv[tt-1]) - 2*LMR[tt]*s_l[tt-1] -  mul_tr[tt]*s_l[tt-1] 
-      i_l1[tt] <- i_l1[tt-1] + (EFD[tt]*FELtt*max((1-Nl[tt-1]/(Nh[tt-1]*C_t(rain[tt]))),0)*0.5*Nv[tt-1])*params$nu*i_v1[tt-1]/Nv[tt-1] - LMR[tt]*i_l1[tt-1] - mul_tr[tt]*i_l1[tt-1]
-      i_l2[tt] <- i_l2[tt-1] + (EFD[tt]*FELtt*max((1-Nl[tt-1]/(Nh[tt-1]*C_t(rain[tt]))),0)*0.5*Nv[tt-1])*params$nu*i_v2[tt-1]/Nv[tt-1] - LMR[tt]*i_l2[tt-1] - mul_tr[tt]*i_l2[tt-1]
+      s_l[tt] <- s_l[tt-1] + (EFD[tt]*FELtt*max((1-Nl[tt-1]/(Nh[tt-1]*cf*C_t(rain[tt]))),0)*0.5*Nv[tt-1])*(1 - params$nu*(i_v1[tt-1] + i_v2[tt-1])/Nv[tt-1]) - 2*LMR[tt]*s_l[tt-1] -  mul_tr[tt]*s_l[tt-1] 
+      i_l1[tt] <- i_l1[tt-1] + (EFD[tt]*FELtt*max((1-Nl[tt-1]/(Nh[tt-1]*cf*C_t(rain[tt]))),0)*0.5*Nv[tt-1])*params$nu*i_v1[tt-1]/Nv[tt-1] - LMR[tt]*i_l1[tt-1] - mul_tr[tt]*i_l1[tt-1]
+      i_l2[tt] <- i_l2[tt-1] + (EFD[tt]*FELtt*max((1-Nl[tt-1]/(Nh[tt-1]*cf*C_t(rain[tt]))),0)*0.5*Nv[tt-1])*params$nu*i_v2[tt-1]/Nv[tt-1] - LMR[tt]*i_l2[tt-1] - mul_tr[tt]*i_l2[tt-1]
       s_p[tt] <- s_p[tt-1] + 2*LMR[tt]*s_l[tt-1] - 2*PMR[tt]*s_p[tt-1] - mup_tr[tt]*s_p[tt-1]
       i_p1[tt] <- i_p1[tt-1] + LMR[tt]*i_l1[tt-1] - PMR[tt]*i_p1[tt-1] - mup_tr[tt]*i_p1[tt-1]
       i_p2[tt] <- i_p2[tt-1] + LMR[tt]*i_l2[tt-1] - PMR[tt]*i_p2[tt-1] - mup_tr[tt]*i_p2[tt-1]
@@ -136,20 +155,21 @@ den_model <- function(project, params, data, initial_conditions,
       i_v2[tt] <- i_v2[tt-1] + PMR[tt]*i_p2[tt-1] + PDR[tt]*e_v2[tt-1] - muv[tt]*i_v2[tt-1]
       
       # host population dynamics
-      s_h[tt] <- s_h[tt-1] + BR[tt]*Nh[tt-1] - a[tt]*pIMtt*((i_v1[tt-1] + i_v2[tt-1])/Nh[tt-1])*s_h[tt-1] - DR[tt]*s_h[tt-1]  #+ im[tt]*Nh[tt-1] - em[tt]*s_h[tt-1] 
-      e_h1[tt] <- e_h1[tt-1] + a[tt]*pIMtt*(i_v1[tt-1]/Nh[tt-1])*s_h[tt-1] - params$alpha1*e_h1[tt-1] - DR[tt]*e_h1[tt-1] + influx[tt-1] #- em[tt]*e_h1[tt-1] 
-      e_h2[tt] <- e_h2[tt-1] + a[tt]*pIMtt*(i_v2[tt-1]/Nh[tt-1])*s_h[tt-1] - params$alpha2*e_h2[tt-1] - DR[tt]*e_h2[tt-1] #- em[tt]*e_h2[tt-1]
-      i_h1[tt] <- i_h1[tt-1] + params$alpha1*e_h1[tt-1] - params$gamma1*i_h1[tt-1] - DR[tt]*i_h1[tt-1] #- em[tt]*i_h1[tt-1]
-      i_h2[tt] <- i_h2[tt-1] + params$alpha2*e_h2[tt-1] - params$gamma2*i_h2[tt-1] - DR[tt]*i_h2[tt-1] #- em[tt]*i_h2[tt-1]
-      ci_h1[tt] <- ci_h1[tt-1] + params$gamma1*i_h1[tt-1] - params$sigma1*ci_h1[tt-1] - DR[tt]*ci_h1[tt-1] #- em[tt]*ci_h1[tt-1]
-      ci_h2[tt] <- ci_h2[tt-1] + params$gamma2*i_h2[tt-1] - params$sigma2*ci_h2[tt-1] - DR[tt]*ci_h2[tt-1] #- em[tt]*ci_h2[tt-1]
-      r_h1[tt] <- r_h1[tt-1] + params$sigma1*ci_h1[tt-1] - a[tt]*pIMtt*(i_v2[tt-1]/Nh[tt-1])*r_h1[tt-1] - DR[tt]*r_h1[tt-1] #- em[tt]*r_h1[tt-1]
-      r_h2[tt] <- r_h2[tt-1] + params$sigma2*ci_h2[tt-1] - a[tt]*pIMtt*(i_v1[tt-1]/Nh[tt-1])*r_h2[tt-1] - DR[tt]*r_h2[tt-1] #- em[tt]*r_h2[tt-1]
-      e_h12[tt] <- e_h12[tt-1] + a[tt]*pIMtt*(i_v2[tt-1]/Nh[tt-1])*r_h1[tt-1] - params$alpha2*e_h12[tt-1] - DR[tt]*e_h12[tt-1] #- em[tt]*e_h12[tt-1]
-      e_h21[tt] <- e_h21[tt-1] + a[tt]*pIMtt*(i_v1[tt-1]/Nh[tt-1])*r_h2[tt-1] - params$alpha1*e_h21[tt-1] - DR[tt]*e_h21[tt-1] #- em[tt]*e_h21[tt-1]
-      i_h12[tt] <- i_h12[tt-1] + params$alpha2*e_h12[tt-1] - params$DIM*i_h12[tt-1] - params$gamma2*i_h12[tt-1] - DR[tt]*i_h12[tt-1] #- em[tt]*i_h12[tt-1]
-      i_h21[tt] <- i_h21[tt-1] + params$alpha1*e_h21[tt-1] - params$DIM*i_h21[tt-1] - params$gamma1*i_h21[tt-1] - DR[tt]*i_h21[tt-1] #- em[tt]*i_h21[tt-1]
-      r[tt] <- r[tt-1] + params$gamma2*i_h12[tt-1] + params$gamma1*i_h21[tt-1] - DR[tt]*r[tt-1] #- em[tt]*r[tt-1]
+      s_h[tt] <- s_h[tt-1] +  BR[tt]*Nh[tt-1] - # newpop[tt] -
+        a[tt]*pIMtt*((i_v1[tt-1] + i_v2[tt-1])/Nh[tt-1])*s_h[tt-1] - DR[tt]*s_h[tt-1]  + im[tt]*Nh[tt-1] - em[tt]*s_h[tt-1] 
+      e_h1[tt] <- e_h1[tt-1] + a[tt]*pIMtt*(i_v1[tt-1]/Nh[tt-1])*s_h[tt-1] - params$alpha1*e_h1[tt-1] - DR[tt]*e_h1[tt-1] + influx1[tt-1] - em[tt]*e_h1[tt-1] 
+      e_h2[tt] <- e_h2[tt-1] + a[tt]*pIMtt*(i_v2[tt-1]/Nh[tt-1])*s_h[tt-1] - params$alpha2*e_h2[tt-1] - DR[tt]*e_h2[tt-1] + influx2[tt-1] - em[tt]*e_h2[tt-1]
+      i_h1[tt] <- i_h1[tt-1] + params$alpha1*e_h1[tt-1] - params$gamma1*i_h1[tt-1] - DR[tt]*i_h1[tt-1] - em[tt]*i_h1[tt-1]
+      i_h2[tt] <- i_h2[tt-1] + params$alpha2*e_h2[tt-1] - params$gamma2*i_h2[tt-1] - DR[tt]*i_h2[tt-1] - em[tt]*i_h2[tt-1]
+      ci_h1[tt] <- ci_h1[tt-1] + params$gamma1*i_h1[tt-1] - params$sigma1*ci_h1[tt-1] - DR[tt]*ci_h1[tt-1] - em[tt]*ci_h1[tt-1]
+      ci_h2[tt] <- ci_h2[tt-1] + params$gamma2*i_h2[tt-1] - params$sigma2*ci_h2[tt-1] - DR[tt]*ci_h2[tt-1] - em[tt]*ci_h2[tt-1]
+      r_h1[tt] <- r_h1[tt-1] + params$sigma1*ci_h1[tt-1] - a[tt]*pIMtt*(i_v2[tt-1]/Nh[tt-1])*r_h1[tt-1] - DR[tt]*r_h1[tt-1] - em[tt]*r_h1[tt-1]
+      r_h2[tt] <- r_h2[tt-1] + params$sigma2*ci_h2[tt-1] - a[tt]*pIMtt*(i_v1[tt-1]/Nh[tt-1])*r_h2[tt-1] - DR[tt]*r_h2[tt-1] - em[tt]*r_h2[tt-1]
+      e_h12[tt] <- e_h12[tt-1] + a[tt]*pIMtt*(i_v2[tt-1]/Nh[tt-1])*r_h1[tt-1] - params$alpha2*e_h12[tt-1] - DR[tt]*e_h12[tt-1] - em[tt]*e_h12[tt-1]
+      e_h21[tt] <- e_h21[tt-1] + a[tt]*pIMtt*(i_v1[tt-1]/Nh[tt-1])*r_h2[tt-1] - params$alpha1*e_h21[tt-1] - DR[tt]*e_h21[tt-1] - em[tt]*e_h21[tt-1]
+      i_h12[tt] <- i_h12[tt-1] + params$alpha2*e_h12[tt-1] - params$DIM*i_h12[tt-1] - params$gamma2*i_h12[tt-1] - DR[tt]*i_h12[tt-1] - em[tt]*i_h12[tt-1]
+      i_h21[tt] <- i_h21[tt-1] + params$alpha1*e_h21[tt-1] - params$DIM*i_h21[tt-1] - params$gamma1*i_h21[tt-1] - DR[tt]*i_h21[tt-1] - em[tt]*i_h21[tt-1]
+      r[tt] <- r[tt-1] + params$gamma2*i_h12[tt-1] + params$gamma1*i_h21[tt-1] - DR[tt]*r[tt-1] - em[tt]*r[tt-1]
       
       # Update population size
       Nl[tt] <- s_l[tt] + i_l1[tt] + i_l2[tt]
@@ -162,6 +182,9 @@ den_model <- function(project, params, data, initial_conditions,
       reInfections12[tt] <- a[tt]*pIMtt*(i_v2[tt-1]/Nh[tt-1])*r_h1[tt-1]
       reInfections21[tt] <- a[tt]*pIMtt*(i_v1[tt-1]/Nh[tt-1])*r_h2[tt-1]
       denMortality[tt] <-  params$DIM*i_h12[tt-1] + params$DIM*i_h21[tt-1]
+      
+      # allDeaths[tt] <- 0
+      # newPop[tt] <- 0
       
     }
     

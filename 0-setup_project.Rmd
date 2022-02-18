@@ -41,7 +41,7 @@ project <- "testing_base"
 
 # Simulation time - model unit is days
 startYear <- 1995 # Start Jan 1 this year
-endYear <- 2080 # End Dec 31 this year
+endYear <- 2015 # End Dec 31 this year
 
 # Simulation time-step in days
 dt <- 1/24
@@ -58,6 +58,14 @@ gcmOptions <- c("Observed","GFDL-ESM2M","HadGEM2-ES","IPSL-CM5A-LR","MIROC5") # 
                                           
 rcpOptions <- c("Observed","RCP 4.5", "RCP 8.5")
 
+# get the projected birth and death rate
+projDemRate <- read.csv(file.path(getwd(), "data", "bd_projectedBRDR.csv")) %>%
+  filter(MidPeriod > startYear & MidPeriod < endYear)
+
+birthRate <- projDemRate$CBR
+
+deathRate <- projDemRate$CDR
+
 # Simulation parameters
 sims <- 1 # Number of simulations
 
@@ -73,7 +81,9 @@ pg$location <- location
 pg$gcms <- gcmOptions
 pg$rcps <- rcpOptions
 pg$sims <- sims
-
+pg$birthRate <- birthRate
+pg$deathRate <- deathRate
+  
 # Various time-step options which can be useful. Main one is pts and npts.
 start_date <- as_date(paste0(startYear, "-01-01"))
 end_date <- as_date(paste0(endYear, "-12-31"))
@@ -167,55 +177,56 @@ for (source in gcmOptions) {
     hum <- fillGap(clim$SVPD, dt, option = "hum")
     rain <- fillGap(clim$prec, dt, option = "rain")
     
-    # Create temporary data frame
-    if (scenario == "NA") {
-      # Observed data can be missing for some dates. Here we store missing
-      # values as NAs. The model will not be able to run on NAs. Individuals 
-      # dates need to be filled in manually. 
-      
-      if (location == "NA") {
-        # Fill in missing..... 
-      }
-      
-      # Manual filling in of data. 
-      # 
-      # Observed data is missing before 1999 for Dhaka so can only run the 
-      # model from 1999. 
-      # 
-      # Other other date has missing data (2006-12-01) we fill this in by assuming the same 
-      # values as previous day
-      
-      tempData$tdate <- as_datetime(start_date + pts -1)
-      tempData$source <- source
-      tempData$scenario <- scenario
-      
-      left_join(tempData, tibble(date = clim$date, temp = temp), by = date)
-      # Do nothing
+    # # Create temporary data frame
+    # if (scenario == "NA") {
+    #   # Observed data can be missing for some dates. Here we store missing
+    #   # values as NAs. The model will not be able to run on NAs. Individuals 
+    #   # dates need to be filled in manually. 
+    #   
+    #   if (location == "NA") {
+    #     # Fill in missing..... 
+    #   }
+    #   
+    #   # Manual filling in of data. 
+    #   # 
+    #   # Observed data is missing before 1999 for Dhaka so can only run the 
+    #   # model from 1999. 
+    #   # 
+    #   # Other other date has missing data (2006-12-01) we fill this in by assuming the same 
+    #   # values as previous day
+    #   
+    #   tempData$tdate <- as_datetime(start_date + pts -1)
+    #   tempData$source <- source
+    #   tempData$scenario <- scenario
+    #   
+    #   left_join(tempData, tibble(date = clim$date, temp = temp), by = date)
+    #   # Do nothing
+    # } else {
+    tempData$temp <- temp 
+    tempData$rain <- rain
+    tempData$hum <- hum
+    if (source=='Observed'){
+      # Observed data is not available after 2016
+      opts <- seq(1, length(clim$date), by = pg$dt)
+      tempData$tdate <- as_datetime(start_date + opts -1)
     } else {
-      tempData$temp <- temp 
-      tempData$rain <- rain
-      tempData$hum <- hum
-      if (source=='Observed'){
-        # Observed data is not available after 2016
-        opts <- seq(1, length(clim$date), by = pg$dt)
-        tempData$tdate <- as_datetime(start_date + opts -1)
-      } else {
-        tempData$tdate <- as_datetime(start_date + pts -1)
-      }
-      
-      tempData$source <- source
-      tempData$scenario <- scenario
-      
-      # Add data to final data frame
-      climateData <- bind_rows(climateData, tempData)
+      tempData$tdate <- as_datetime(start_date + pts -1)
     }
+    
+    tempData$source <- source
+    tempData$scenario <- scenario
+    
+    # Add data to final data frame
+    climateData <- bind_rows(climateData, tempData)
   }
 }
+# }
 
 # Final data frame
 climateData <- as_tibble(climateData) %>%
   select(tdate, source, scenario, everything())
-climateData$temp <- zoo::na.locf(climateData$temp) # replace missing values with previous observation
+# replace missing values with previous observation
+climateData$temp <- zoo::na.locf(climateData$temp) 
 
 
 ```

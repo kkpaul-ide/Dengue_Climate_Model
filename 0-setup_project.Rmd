@@ -37,11 +37,11 @@ scenario specifications, and outputs
 ```{r User inputs and project set-up}
 
 # Model project name
-project <- "testing_base"
+project <- "randomYears"
 
 # Simulation time - model unit is days
 startYear <- 1995 # Start Jan 1 this year
-endYear <- 2015 # End Dec 31 this year
+endYear <- 2014 # End Dec 31 this year
 
 # Simulation time-step in days
 dt <- 1/24
@@ -152,7 +152,7 @@ for (source in gcmOptions) {
   print(source)
   for (scenario in rcpOptions) {
     print(scenario)
-    
+    climData <- list()
     tempData <- list()
     
     # Extract data
@@ -166,42 +166,14 @@ for (source in gcmOptions) {
     if (length(clim2$gcm)==0) next # skip when Observed with RCP 
     # or ISIMIP GCM with observed combination
     
-    clim3 <- rbind(clim1, clim2)
-    
-    clim <- clim3 %>%
+    clim <- rbind(clim1, clim2) %>%
       filter(date >= start_date, date <= end_date)
-    
     
     # Fill in daily values
     temp <- fillGap(clim$meanTemp, dt, clim$dtr, option = "temp")
     hum <- fillGap(clim$SVPD, dt, option = "hum")
     rain <- fillGap(clim$prec, dt, option = "rain")
     
-    # # Create temporary data frame
-    # if (scenario == "NA") {
-    #   # Observed data can be missing for some dates. Here we store missing
-    #   # values as NAs. The model will not be able to run on NAs. Individuals 
-    #   # dates need to be filled in manually. 
-    #   
-    #   if (location == "NA") {
-    #     # Fill in missing..... 
-    #   }
-    #   
-    #   # Manual filling in of data. 
-    #   # 
-    #   # Observed data is missing before 1999 for Dhaka so can only run the 
-    #   # model from 1999. 
-    #   # 
-    #   # Other other date has missing data (2006-12-01) we fill this in by assuming the same 
-    #   # values as previous day
-    #   
-    #   tempData$tdate <- as_datetime(start_date + pts -1)
-    #   tempData$source <- source
-    #   tempData$scenario <- scenario
-    #   
-    #   left_join(tempData, tibble(date = clim$date, temp = temp), by = date)
-    #   # Do nothing
-    # } else {
     tempData$temp <- temp 
     tempData$rain <- rain
     tempData$hum <- hum
@@ -215,12 +187,30 @@ for (source in gcmOptions) {
     
     tempData$source <- source
     tempData$scenario <- scenario
+    tempData$year <- year(tempData$tdate)
     
     # Add data to final data frame
-    climateData <- bind_rows(climateData, tempData)
+    climData <- bind_rows(climData, tempData)
+    
+    # Reorder climate data to have the years in random
+    set.seed(sim_seed)
+    tempClimData <- list()
+    randomYears <- list()
+    # for each GCM and RCP, making 10 different sets
+    for (set in 1:10){ 
+      randomYears[[set]] <- sample(startYear:endYear)
+      a <- list()
+      for (years in randomYears[[set]]){
+        #filter data for randomly selected year
+        b <- filter(climData, year==years)
+        a <- bind_rows(a,b)
+      }
+      a$set <- set
+      tempClimData <- bind_rows(tempClimData,a)
+    }
+    climateData <- bind_rows(climateData,tempClimData)
   }
 }
-# }
 
 # Final data frame
 climateData <- as_tibble(climateData) %>%

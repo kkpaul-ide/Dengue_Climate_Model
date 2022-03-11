@@ -1,0 +1,326 @@
+Mosquito parameter fitting
+==========================
+
+This script is used to (re)fit a Briere function to published mosquito data to 
+generate best estimates and uncertainty in key variables that are dependent 
+on temperature, humidity and rainfall. This is done to replace polynomial 
+fitting previously used and determine the values of the underlying parameters 
+which were not published. 
+
+The key parameters are:
+* Biting rate
+* ???
+*
+*
+
+For each of these variables estimates and uncertainty for the underlying 
+parameters are produced. 
+
+```{r setup}
+# Restart R and set working directory to source file location
+
+library(tidyverse)
+library(LeftysRpkg)
+library(tidymodels)
+library(minpack.lm)
+
+# User inputs - change these for different variables
+parameter <- "transmission_prob"
+fileName <- "transmission_probability_data.csv"
+
+# Source Briere function for fitting 
+source(file.path(getwd(), "code", "functions.R"))
+
+# Directories and files
+dataFile <- file.path(getwd(), "data", fileName)
+outputFolder <-  file.path(getwd(), "data", "fitted_parameters")
+
+```
+
+```{r Load specified data}
+# Load specified mosquito vs weather data
+mosData <- read_csv(dataFile, col_names = FALSE) %>%
+        rename(temperature = X1,
+               estimate = X2) # generic name
+
+# Round data as extracted manually from figures - what we use for fitting
+mosDataClean <- mosData %>%
+        mutate(temperature = round(temperature, 3),
+          estimate = round(estimate, 3)) %>%
+        mutate(estimate = ifelse(estimate < 0.01, 0, estimate))
+
+```
+
+# Best estimate parameters
+
+First we do a non-linear least squares fit using a Briere function. 
+
+```{r Best estimate fitting }
+# Guess and check to fine tune initial conditions
+tseq <- mosDataClean$temperature
+qplot(tseq, briere(tseq, 18, 36, 2, 8.5e-4), 
+      geom = "line", 
+      ylim = c(0, NA), 
+      ylab = "Biting rate") + 
+        geom_point(aes(y = mosDataClean$estimate), colour = "blue") +
+        PlotOptions()
+
+initialParList <- list(tmin = 18, tmax = 36, m = 2, a = 8.5e-4)
+
+# Fit model --------------------------------------------------------------------
+# First with all parameters being free 
+fitModel1 <- nlsLM(estimate ~ briere(temperature, tmin, tmax, m, a), 
+                 data = mosDataClean, 
+                 start = initialParList,
+                 control = nls.control(maxiter = 1000))
+summary(fitModel1)
+
+# Second fit force tmin = 13, tmax = 40 for exploration (Not used further)
+# fitModel2 <- nls(biting_rate ~ BriereFunction(temperature, 13, 40, m, a),
+#                  data = mosDataClean,
+#                  start = initialParList[3:4],
+#                  control = nls.control(maxiter = 1000))
+# summary(fitModel2)
+
+bestModel <- fitModel1 # choose free model
+
+# Plot best fit model with new data --------------------------------------------
+fitModelData <- data.frame(temperature = seq(5, 45, length = 100),
+  fitvalue = predict(bestModel, list(temperature = seq(5, 45, length = 100))))
+
+ggplot(data = fitModelData, aes(x=temperature, y = fitvalue)) +
+        geom_line(colour = "black") +
+        geom_point(data = mosDataClean, aes(x = temperature, y = estimate),
+                   colour = "blue") +
+        labs(x = "Temperature", y = "Biting rate") +
+        PlotOptions()
+
+# Statistics for best fit model ------------------------------------------------
+summary(bestModel)
+bestEstimates <- coef(bestModel)
+standardErrors <- summary(fitModel1)$coefficients[, 2]
+sd <- standardErrors*sqrt(nrow(mosDataClean))
+# Assuming a normal distribution can get 95% confidence intervals
+lower95 <- bestEstimates - 1.96*standardErrors
+upper95 <- bestEstimates + 1.96*standardErrors
+
+# Store statistics and save
+bestFitStats <- tibble(parameter = names(bestEstimates), 
+  estimates = bestEstimates,
+  se = standardErrors,
+  variance = sd^2,
+  lower95 = lower95,
+  upper95 = upper95)
+
+```
+
+First we will look at the Briere functions produced when we simply sample from 
+the estimated 95% CIs for the fitted parameters. 
+
+```{r Plot with sampled values}
+# Create samples for each parameter using the 95% CI
+nsamples <- 100
+paramSamples <- tibble(tmin = runif(nsamples, min = lower95["tmin"], 
+  max = upper95["tmin"]),
+  tmax = runif(nsamples, min = lower95["tmax"], max = upper95["tmax"]),
+  a = runif(nsamples, min = lower95["a"], max = upper95["a"]),
+  m = runif(nsamples, min = lower95["m"], max = upper95["m"])) 
+
+# a has to be > 0 so reset values of a < 0 to 0
+paramSamples <- paramSamples %>%
+  mutate(a = ifelse(a < 0, 0, a))
+
+for (ii in 1:nsamples) {
+  sample <- paramSamples[ii,]
+  newFitValue <- briere(fitModelData$temperature, 
+    sample$tmin, sample$tmax, sample$m, sample$a)
+  
+  fitModelData[[paste0("sample", ii)]] <- newFitValue
+  
+}
+
+# Plot all the sampled results
+ggplot(data = gather(fitModelData, "sample", "value", 2:ncol(fitModelData)), 
+  aes(x= temperature, group = sample, y = value)) +
+  geom_line() + 
+  # geom_point(data = mosDataClean, aes(x = temperature, y = estimate), 
+  #   colour = "blue") +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(x = "Temperature", y = "Biting rate") +
+  PlotOptions()
+
+```
+
+# Bootstrapping
+
+Now try to generate uncertainty using a bootstrap. 
+
+```{r Function for bootstrap fitting}
+
+Fit_on_bootstrap <- function(split) {
+  
+  modelFitSplit <- tryCatch(nlsLM(estimate ~ briere(temperature, tmin, tmax, m, a), 
+    data = analysis(split), 
+    start = initialParList,
+    control = nls.control(maxiter = 1000, 
+      warnOnly = TRUE, scaleOffset = 1,
+      minFactor = 1/4096)), 
+    error = function(err) {
+      print("nlsLM won't fit on boot")
+      # Return linear model which will NULL model
+      fitData <- analysis(split)
+      errModelSplit <- lm(estimate ~ temperature, data = analysis(split))
+      return(errModelSplit)})
+  
+  # Return final model for split
+  return(modelFitSplit)
+}
+
+```
+
+```{r Bootstrap estimates}
+
+# Set up bootstraps
+bootSeed <- sample(1000:3000, 1)
+# bootSeed <- 2226
+set.seed(bootSeed)
+
+# Will not always get good fits so do enough boots so that numSets can be 
+# obtained as a lookup table
+numBoots <- 25000 
+numSets <- 10000
+
+boots <- bootstraps(mosDataClean, times = numBoots, apparent = TRUE)
+
+# Generate bootstrapped models
+boot_models <- boots %>% 
+        mutate(model = map(splits, Fit_on_bootstrap),
+               coef_info = map(model, tidy),
+               predictions = map(model, augment))
+
+# Extract parameter estimates - filtering out ones where error was produced and
+# unrealistic parameter values. Each parameter will have different realistic 
+# ranges
+if (parameter == "biting_rate") {
+  tminMin <- 5
+  tminMax <- 20
+  tmaxMin <- 35
+  tmaxMax <- 45
+} else if (parameter == "") {
+  
+} else {
+  tminMin <- 5
+  tminMax <- 20
+  tmaxMin <- 35
+  tmaxMax <- 45
+}
+
+params_boot <- boot_models %>% 
+        unnest(coef_info) %>% 
+        select(id, term, estimate) %>%
+        spread(term, estimate) %>% 
+        # remove problematic bootstrap fits
+        filter(is.na(`(Intercept)`), is.na(temperature), a > 0, m > 0, 
+              tmax > tmaxMin, tmax < tmaxMax, 
+              tmin > tminMin, tmin < tminMax) %>%
+        select(-`(Intercept)`, -temperature)
+
+# Print out percentage of bootstraps that had problematic fits for checking
+100*(numBoots - nrow(params_boot))/numBoots
+
+# Calculate parameter statistics
+params_stats <- params_boot %>% 
+        gather("term", "estimate", 2:ncol(.)) %>%
+        filter(id != "Apparent") %>% # remove best estimates for stats
+        group_by(term) %>%
+        summarise(average = mean(estimate),
+                  lower = quantile(estimate, 0), 
+                  lower95 = quantile(estimate, 0.025),
+                  lowerIQR =  quantile(estimate, 0.25), 
+                  median = median(estimate),
+                  upperIQR =  quantile(estimate, 0.75), 
+                  upper95 = quantile(estimate, 0.975),
+                  upper = quantile(estimate, 1))
+
+# Select numSets for lookup table - set aside Apparent first and then add as 
+# best estimates
+params_table <- params_boot %>% 
+  filter(id != "Apparent") %>%
+  sample_n(numSets, replace = FALSE) %>%
+  bind_rows(params_boot %>% filter(id == "Apparent")) %>%
+  arrange(id)
+
+# Filter out problematic bootstrap models
+boot_models <- boot_models %>% filter(id %in% params_boot$id)
+
+```
+
+```{r Plot bootstrap fits}
+# New data for smoothing 
+new_preds <- tibble(temperature = seq(5, 45,  length.out = 250))
+
+preds <- augment(bestModel, newdata = new_preds, 
+                 type.predict = "response")
+
+# Create smoother predictions for bootstrapped replicate
+preds <- boot_models %>%
+        mutate(new_predictions = map(model, augment, newdata = new_preds, 
+                                     type.predict = "response")) %>%
+        unnest(new_predictions) %>%
+        # group by each value of xseq and get quantiles
+        group_by(., temperature) %>%
+        summarise(lwr_CI = quantile(.fitted, 0.025),
+                  lwr_IRQ = quantile(.fitted, 0.25),
+                  upr_IQR = quantile(.fitted, 0.75),
+                  upr_CI = quantile(.fitted, 0.975)) %>%
+        ungroup() %>%
+        merge(., preds, by = 'temperature')
+
+# Plot model fit and bootstrap ranges
+bootstrapPlot <- ggplot() + 
+        geom_ribbon(data = preds, aes(x = temperature, ymin = lwr_CI, ymax = upr_CI,
+                                      fill = "ci",  alpha = "ci")) +
+        geom_ribbon(data = preds, aes(x = temperature, ymin = lwr_IRQ, ymax = upr_IQR, 
+                                      fill = "iqr",  alpha = "iqr")) +
+        geom_point(data = mosDataClean, aes(temperature, estimate, colour = "data")) +
+        geom_line(data = preds, aes(x = temperature, y = .fitted, colour = "fit")) +
+        ylab("Transmission probability") +
+        xlab('Temperature') +
+        scale_colour_manual(NULL, values = c("blue", "black"),
+                            limits = c("data", "fit"),
+                            labels = c("Data", "Fitted values")) +
+        scale_alpha_manual(NULL, values = c(0.4, 0.1),
+                           limits = c("iqr", "ci"),
+                           labels = c("Fitted IQR", "Fitted 95% CI")) +
+        scale_fill_manual(NULL, values = c("black", "black"),
+                          limits = c("iqr", "ci"),
+                          labels = c("Fitted IQR", "Fitted 95% CI")) +
+        expand_limits(y = 0) +
+        PlotOptions() + theme(legend.spacing = unit(0, "cm"),
+                              legend.margin = margin(0, 0, 0, 0, "cm")) +
+        guides(colour = guide_legend(order = 1),
+               alpha = guide_legend(order = 2),
+               fill = "none")
+
+bootstrapPlot
+
+```
+
+
+```{r Save the outputs}
+save(bootSeed, bestFitStats, params_boot, params_stats, params_table, boot_models, 
+  bootstrapPlot, file = file.path(outputFolder, paste0(parameter, "_fits.Rda")))
+
+write_csv(bestFitStats, file = file.path(outputFolder, paste0(parameter, "_best_fit.csv")))
+
+write_csv(params_table, file = file.path(outputFolder, paste0(parameter, "_sets.csv")))
+
+write_csv(params_stats, file = file.path(outputFolder, paste0(parameter, "_statistics.csv")))
+```
+
+```{r}
+
+load(file.path(getwd(), "data", "fitted_parameters" , "biting_rate_fits.Rda"))
+
+```
+

@@ -9,9 +9,11 @@ which were not published.
 
 The key parameters are:
 * Biting rate
-* ???
-*
-*
+* Infection probability
+* Oviposition rate
+* Pupae transition rate
+* Transmission probability
+* Extrinsic incubation rate
 
 For each of these variables estimates and uncertainty for the underlying 
 parameters are produced. 
@@ -26,14 +28,58 @@ library(minpack.lm)
 
 # User inputs - change these for different variables
 parameter <- "transmission_prob"
-fileName <- "transmission_probability_data.csv"
+
+# For specified parameter set file of data and constraints on tmax parameter
+# of the Briere function - constraints set based on guess and check and the 
+# fits in the paper Mordecai et al (2017) paper (where raw data came from)
+
+if (parameter == "biting_rate") {
+  fileName <- "Biting_rate-Extraction.csv"
+  tminMin <- 10; tminMax <- 25
+  tmaxMin <- 35; tmaxMax <- 50
+  mMin <- 0; mMax <- 10
+  aMin <- 0; aMax <- 0.000087
+} else if (parameter == "infection_probability") {
+  fileName <- "infection_probability_data.csv"
+  tminMin <- 16; tminMax <- 25
+  tmaxMin <- 36; tmaxMax <- 45
+  mMin <- 0; mMax <- 10
+  aMin <- 0; aMax <- 0.00098
+} else if (parameter == "oviposition_rate"){
+  fileName <- "Egg_per_female_per_day-Extractions.csv"
+  tminMin <- 11; tminMax <- 21
+  tmaxMin <- 32; tmaxMax <- 42
+  mMin <- 0; mMax <- 10
+  aMin <- 0; aMax <- 0.009
+} else if (parameter == "pupaeTransition_rate"){
+  fileName <- "Tansition_rate_pupae-Extraction.csv"
+  # data extracted from Yang et al. 2009.
+  tminMin <- 10; tminMax <- 20
+  tmaxMin <- 39; tmaxMax <- 42
+  mMin <- 0; mMax <- 10
+  aMin <- 0; aMax <- 0.0005
+} else if (parameter == "transmission_prob"){
+  fileName <- "transmission_probability_data.csv"
+  tminMin <- 12; tminMax <- 22 
+  tmaxMin <- 37; tmaxMax <- 42 
+  mMin <- 0; mMax <- 5
+  aMin <- 0; aMax <- 0.0015
+} else if (parameter == "virusIncubation_rate"){
+  fileName <- "Virus_incubation_rate-Extraction.csv"
+  tminMin <- 16; tminMax <- 25
+  tmaxMin <- 40; tmaxMax <- 46 
+  mMin <- 0; mMax <- 10
+  aMin <- 0; aMax <- 0.00007
+}
 
 # Source Briere function for fitting 
-source(file.path(getwd(), "code", "functions.R"))
+source(file.path(getwd(), "code", "functions.R"), echo = TRUE)
 
 # Directories and files
 dataFile <- file.path(getwd(), "data", fileName)
 outputFolder <-  file.path(getwd(), "data", "fitted_parameters")
+
+plotRandom <- FALSE
 
 ```
 
@@ -48,6 +94,17 @@ mosDataClean <- mosData %>%
         mutate(temperature = round(temperature, 3),
           estimate = round(estimate, 3)) %>%
         mutate(estimate = ifelse(estimate < 0.01, 0, estimate))
+# Add a data point based on Mordecai et al 2017 paper
+if (parameter == "transmission_prob") {
+mosDataClean <- mosDataClean %>%
+  bind_rows(tibble(temperature = 39, estimate = 0))
+} else if (parameter == "infection_probability") {
+mosDataClean <- mosDataClean %>%
+  bind_rows(tibble(temperature = 40, estimate = 0))  
+} else if (parameter == "virusIncubation_rate") {
+mosDataClean <- mosDataClean %>%
+  bind_rows(tibble(temperature = 45, estimate = 0))  
+}
 
 ```
 
@@ -57,28 +114,47 @@ First we do a non-linear least squares fit using a Briere function.
 
 ```{r Best estimate fitting }
 # Guess and check to fine tune initial conditions
-tseq <- mosDataClean$temperature
-qplot(tseq, briere(tseq, 18, 36, 2, 8.5e-4), 
+tseq <-  mosDataClean$temperature
+qplot(tseq, briere(tseq, 18, 39, 2, 0.00075), 
       geom = "line", 
       ylim = c(0, NA), 
-      ylab = "Biting rate") + 
+      xlim = c(0, 50), 
+      ylab = paste(parameter)) + 
         geom_point(aes(y = mosDataClean$estimate), colour = "blue") +
         PlotOptions()
 
-initialParList <- list(tmin = 18, tmax = 36, m = 2, a = 8.5e-4)
+if (parameter == "biting_rate") {
+  initialParList <- list(tmin = 10, tmax = 45, m = 2, a = 0.00041)
+} else if (parameter == "infection_probability"){
+  initialParList <- list(tmin = 15, tmax = 39, m = 2, a = 0.00098)
+} else if (parameter == "oviposition_rate"){
+  initialParList <- list(tmin = 10, tmax = 40, m = 3, a = 0.005)
+} else if (parameter == "pupaeTransition_rate"){
+  initialParList <- list(tmin = 10, tmax = 40, m = 3, a = 0.0005)
+} else if (parameter == "virusIncubation_rate"){
+  initialParList <- list(tmin = 10, tmax = 45, m = 2, a = 0.000064)
+} else if (parameter == "transmission_prob"){
+  initialParList <- list(tmin = 18, tmax = 39, m = 2, a = 0.00075)
+} 
 
 # Fit model --------------------------------------------------------------------
 # First with all parameters being free 
 fitModel1 <- nlsLM(estimate ~ briere(temperature, tmin, tmax, m, a), 
                  data = mosDataClean, 
                  start = initialParList,
+                 lower = c(tminMin, tmaxMin, mMin, aMin),
+                 upper =  c(tminMax, tmaxMax, mMax, aMax),
                  control = nls.control(maxiter = 1000))
 summary(fitModel1)
 
-# Second fit force tmin = 13, tmax = 40 for exploration (Not used further)
-# fitModel2 <- nls(biting_rate ~ BriereFunction(temperature, 13, 40, m, a),
+# BriereFunction2 <- function(temp, tmin, m, c) {
+#   return(ifelse(t < tmin | t > 40, 0, c*t*(t-tmin)*(40-t)^(1/m)))
+#   
+# }
+# # Second fit force tmin = 13, tmax = 40 for exploration (Not used further)
+# fitModel2 <- nlsLM(estimate ~ briere(temperature, tmin, 40, m, a),
 #                  data = mosDataClean,
-#                  start = initialParList[3:4],
+#                  start = initialParList[c(1,3:4)],
 #                  control = nls.control(maxiter = 1000))
 # summary(fitModel2)
 
@@ -92,19 +168,19 @@ ggplot(data = fitModelData, aes(x=temperature, y = fitvalue)) +
         geom_line(colour = "black") +
         geom_point(data = mosDataClean, aes(x = temperature, y = estimate),
                    colour = "blue") +
-        labs(x = "Temperature", y = "Biting rate") +
+        labs(x = "Temperature", y = paste(parameter)) +
         PlotOptions()
 
 # Statistics for best fit model ------------------------------------------------
 summary(bestModel)
 bestEstimates <- coef(bestModel)
-standardErrors <- summary(fitModel1)$coefficients[, 2]
+standardErrors <- summary(bestModel)$coefficients[, 2]
 sd <- standardErrors*sqrt(nrow(mosDataClean))
 # Assuming a normal distribution can get 95% confidence intervals
 lower95 <- bestEstimates - 1.96*standardErrors
 upper95 <- bestEstimates + 1.96*standardErrors
 
-# Store statistics and save
+# Store statistics and save 
 bestFitStats <- tibble(parameter = names(bestEstimates), 
   estimates = bestEstimates,
   se = standardErrors,
@@ -118,6 +194,7 @@ First we will look at the Briere functions produced when we simply sample from
 the estimated 95% CIs for the fitted parameters. 
 
 ```{r Plot with sampled values}
+if (plotRandom) {
 # Create samples for each parameter using the 95% CI
 nsamples <- 100
 paramSamples <- tibble(tmin = runif(nsamples, min = lower95["tmin"], 
@@ -146,8 +223,9 @@ ggplot(data = gather(fitModelData, "sample", "value", 2:ncol(fitModelData)),
   # geom_point(data = mosDataClean, aes(x = temperature, y = estimate), 
   #   colour = "blue") +
   coord_cartesian(ylim = c(0, 1)) +
-  labs(x = "Temperature", y = "Biting rate") +
+  labs(x = "Temperature", y = paste(parameter)) +
   PlotOptions()
+}
 
 ```
 
@@ -162,6 +240,8 @@ Fit_on_bootstrap <- function(split) {
   modelFitSplit <- tryCatch(nlsLM(estimate ~ briere(temperature, tmin, tmax, m, a), 
     data = analysis(split), 
     start = initialParList,
+    lower = c(tminMin, tmaxMin, mMin, aMin),
+    upper = c(tmaxMax, tmaxMax, mMax, aMax), 
     control = nls.control(maxiter = 1000, 
       warnOnly = TRUE, scaleOffset = 1,
       minFactor = 1/4096)), 
@@ -187,7 +267,7 @@ set.seed(bootSeed)
 
 # Will not always get good fits so do enough boots so that numSets can be 
 # obtained as a lookup table
-numBoots <- 25000 
+numBoots <- 35000 
 numSets <- 10000
 
 boots <- bootstraps(mosDataClean, times = numBoots, apparent = TRUE)
@@ -198,29 +278,12 @@ boot_models <- boots %>%
                coef_info = map(model, tidy),
                predictions = map(model, augment))
 
-# Extract parameter estimates - filtering out ones where error was produced and
-# unrealistic parameter values. Each parameter will have different realistic 
-# ranges
-if (parameter == "biting_rate") {
-  tminMin <- 5
-  tminMax <- 20
-  tmaxMin <- 35
-  tmaxMax <- 45
-} else if (parameter == "") {
-  
-} else {
-  tminMin <- 5
-  tminMax <- 20
-  tmaxMin <- 35
-  tmaxMax <- 45
-}
-
 params_boot <- boot_models %>% 
         unnest(coef_info) %>% 
         select(id, term, estimate) %>%
         spread(term, estimate) %>% 
         # remove problematic bootstrap fits
-        filter(is.na(`(Intercept)`), is.na(temperature), a > 0, m > 0, 
+        filter(is.na(`(Intercept)`), is.na(temperature), a > aMin, m > mMin, 
               tmax > tmaxMin, tmax < tmaxMax, 
               tmin > tminMin, tmin < tminMax) %>%
         select(-`(Intercept)`, -temperature)
@@ -244,6 +307,7 @@ params_stats <- params_boot %>%
 
 # Select numSets for lookup table - set aside Apparent first and then add as 
 # best estimates
+
 params_table <- params_boot %>% 
   filter(id != "Apparent") %>%
   sample_n(numSets, replace = FALSE) %>%
@@ -284,7 +348,7 @@ bootstrapPlot <- ggplot() +
                                       fill = "iqr",  alpha = "iqr")) +
         geom_point(data = mosDataClean, aes(temperature, estimate, colour = "data")) +
         geom_line(data = preds, aes(x = temperature, y = .fitted, colour = "fit")) +
-        ylab("Transmission probability") +
+        ylab(paste(parameter)) +
         xlab('Temperature') +
         scale_colour_manual(NULL, values = c("blue", "black"),
                             limits = c("data", "fit"),
@@ -320,7 +384,7 @@ write_csv(params_stats, file = file.path(outputFolder, paste0(parameter, "_stati
 
 ```{r}
 
-load(file.path(getwd(), "data", "fitted_parameters" , "biting_rate_fits.Rda"))
+load(file.path(getwd(), "data", "fitted_parameters" , paste0(parameter, "_fits.Rda")))
 
 ```
 

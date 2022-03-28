@@ -114,7 +114,7 @@ fillGap <- function(clim_var,t_step,dtr,option){
 #' function of temperature
 #' @param t daily mean temperature
 #' @return return probability of mosquito infection per bite of an infectious host
-pMI <- function(t, pMI_T0=12.22, pMI_Tm=37.46, pMI_m=2, pMI_c=4.91e-04){
+pMI <- function(t, pMI_T0=16, pMI_Tm=36.6, pMI_m=3.3, pMI_c=9.8e-04){
         return(briere(t, pMI_T0, pMI_Tm, pMI_m, pMI_c))
 }
 
@@ -126,7 +126,7 @@ pMI <- function(t, pMI_T0=12.22, pMI_Tm=37.46, pMI_m=2, pMI_c=4.91e-04){
 #' @param t daily mean temperature
 #' @return return probability of human infection per bite of an infectious mosquito
 
-pIM <- function(t, pIM_T0=17.05, pIM_Tm=35.83, pIM_m=2, pIM_c=8.49e-04){
+pIM <- function(t, pIM_T0=18.6, pIM_Tm=39, pIM_m=2.03, pIM_c=7.03e-04){
         return(briere(t, pIM_T0, pIM_Tm, pIM_m, pIM_c))
 }
 
@@ -138,7 +138,7 @@ pIM <- function(t, pIM_T0=17.05, pIM_Tm=35.83, pIM_m=2, pIM_c=8.49e-04){
 #' function of temperature
 #' @param t daily mean temperature
 #' @return return mosquito biting rate per day
-a_t <- function(t, a_T0=13.35, a_Tm=40.08, a_m=2, a_c=2.02e-04){
+a_t <- function(t, a_T0=15.9, a_Tm=40.1, a_m=1.11, a_c=8.7e-5){
         return(briere(t, a_T0, a_Tm, a_m, a_c))
 }
 
@@ -161,7 +161,7 @@ LMR_t <- function(t, LMR_T0=10, LMR_Tm=40, LMR_m=2, LMR_c=11.96e-5) {
 #' function of temperature
 #' @param t daily mean temperature
 #' @return return rate of pupae turn into adult per day
-PMR_t <- function(t, PMR_T0=10, PMR_Tm=40, PMR_m=2, PMR_c=39.56e-5) {
+PMR_t <- function(t, PMR_T0=10, PMR_Tm=40, PMR_m=3.31, PMR_c=5e-4) {
         return(briere(t, PMR_T0, PMR_Tm, PMR_m, PMR_c))
 }
 
@@ -191,7 +191,7 @@ muv_th <- function(temp, hum, timestep){
 #' @return return daily rate of mosquito being infectious
 #' Mordecai et al. (2017)
 
-d_VIR <- function(t,  VIR_T0=10.68, VIR_Tm=45.90, VIR_m =2, VIR_c=6.56e-05){
+d_VIR <- function(t,  VIR_T0=16, VIR_Tm=45, VIR_m =1.91, VIR_c=8.6e-05){
         return(briere(t, VIR_T0, VIR_Tm, VIR_m, VIR_c))
 }
 
@@ -266,13 +266,23 @@ mup_tr_t <- function(t,pr,pr_c=30,mu_ap=0.001,mup_b0=4.25e-1,mup_b1=-3.25e-2,mup
 }
 
 #' Oviposition rate/eggs laid per female mosquito
-#' ;
+#' 
 #' polynomial fit to empirical data
 #' @param t daily mean temperature
 #' @return return Oviposition rate per female mosquito
-EFD_t <- function(t,EFD_b0=-5.40, EFD_b1=1.80, EFD_b2=-2.12e-1,EFD_b3=1.02e-2,EFD_b4=-1.51e-4){
-        return(poly(t, EFD_b0, EFD_b1, EFD_b2, EFD_b3, EFD_b4))
+# EFD_t <- function(t,EFD_b0=-5.40, EFD_b1=1.80, EFD_b2=-2.12e-1,EFD_b3=1.02e-2,EFD_b4=-1.51e-4){
+#         return(poly(t, EFD_b0, EFD_b1, EFD_b2, EFD_b3, EFD_b4))
+# }
+
+#'Briere fit to empirical data
+#' 
+#' function of temperature
+#' @param t daily mean temperature
+#' @return return daily rate of eggs laid per female
+EFD_t <- function(t, EFD_T0=16.1, EFD_Tm=34.4, EFD_m=1.76, EFD_c=9e-3) {
+        return(briere(t, EFD_T0, EFD_Tm, EFD_m, EFD_c))
 }
+
 
 #' Fraction of eggs hatching to larvae, function of rain
 #' 

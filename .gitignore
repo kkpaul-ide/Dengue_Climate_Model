@@ -7,7 +7,6 @@ archive/
 articles/
 docs/
 misc/
-outputs/
 results/
 
 
@@ -32,3 +31,8 @@ templates/*
 !templates/base_parameters.csv
 !.gitkeep
 
+# data that can be ignored
+outputs/*
+!outputs/base/Model_inputs.Rda
+!outputs/base/Model_inputs_calibrated.Rda
+!.gitkeep

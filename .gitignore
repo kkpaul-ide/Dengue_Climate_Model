@@ -1,7 +1,3 @@
-# Files that can be ignored
-5-observed_analysis.Rmd
-6-projections_analysis.Rmd
-
 .Rhistory
 */.Rhistory
 */*.Rdata
@@ -9,9 +5,30 @@
 # Folders that can be ignored
 archive/
 articles/
-data/
 docs/
 misc/
 outputs/
 results/
-templates/
+
+
+# data that can be ignored
+data/*
+!data/Biting_rate-Extraction.csv
+!data/infection_probability_data.csv
+!data/Egg_per_female_per_day-Extractions.csv
+!data/Tansition_rate_pupae-Extraction.csv
+!data/transmission_probability_data.csv
+!data/Virus_incubation_rate-Extraction.csv
+!data/Tansition_rate_larvae-Yang2014.csv
+!data/Mortality_rate_mosquito_extraction.csv
+!data/Mortality_rate_pupa_extraction.csv
+!data/Mortality_rate_larva_extraction.csv
+!data/bd_projectedBRDR.csv
+!.gitkeep
+
+# data that can be ignored
+templates/*
+!templates/parameters.csv
+!templates/base_parameters.csv
+!.gitkeep
+

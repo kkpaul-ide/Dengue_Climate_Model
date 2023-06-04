@@ -21,7 +21,7 @@ The main developers for the project code are Dr Kishor K. Paul and Dr Richard T.
 *Main directory sub-directories*
 
 ## code
-
+Containsthe dengue transmission model coded in R and specific R functions and scripts of used for data processing, reshaping ISIMIP netCDF data files to run dengue transmission model and analysis of the model simulation output.
 
 ## data
 Contains some raw data used in the analysis. Temperature output of ISIMIP models are available as netCDF files at https://www.isimip.org/outputdata/isimip-data-on-the-esgf-server/ . Data for weather station locations need to be extraced first with the help of Climate Data Operator (CDO) (https://doi.org/10.5281/zenodo.3539275), a collection of command line operators, to be able to use user defined functions and analysis scripts.

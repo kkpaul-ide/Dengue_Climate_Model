@@ -19,7 +19,7 @@ parameters are produced.
 # Restart R and set working directory to source file location
 
 library(tidyverse)
-library(LeftysRpkg)
+# library(LeftysRpkg)
 library(tidymodels)
 library(minpack.lm)
 
@@ -48,6 +48,7 @@ if (parameter == "mosquito_mortality_rate") {
 
 # Source Briere function for fitting 
 source(file.path(getwd(), "code", "functions.R"), echo = TRUE)
+source(file.path(getwd(), "code", "PlotOptions.R"), echo = TRUE)
 
 # Directories and files
 dataFile <- file.path(getwd(), "data", fileName)

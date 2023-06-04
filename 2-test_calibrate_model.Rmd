@@ -10,17 +10,20 @@ with the saved input parameters and data.
 # Packages ----------------------------------------------------------------
 require(tidyverse, quietly = TRUE)
 require(lubridate)
-require(LeftysRpkg)
+# require(LeftysRpkg)
 require(cowplot)
 
 
 source("code/functions.R")
 source("code/ResultFunctions.R") 
 
+
 # Set-up directories ------------------------------------------------------
 basePath <- getwd()
 # dataPath <- file.path(basePath, "data")
 outputsPath <- file.path(basePath, "outputs")
+
+source(file.path(basePath, "code", "PlotOptions.R"), echo = TRUE)
 
 ```
 

@@ -2,7 +2,7 @@
 
 This repository contains all the code for climate-driven dengue transmission model, extracted data for parameter fitting, processed climate model output, model parameters, model simulation, and analysis of the transmission model output.
 
-# DOI
+[![DOI](https://zenodo.org/badge/649274053.svg)](https://zenodo.org/badge/latestdoi/649274053)
 
 All codes were created and run using R statistical software version 4.2.2 and Rstudio version 2022.02.3+492 "Prairie Trillium" release with associated packages (tidyverse 1.3.2; tidymodels 1.0.0; reshape2 1.4.4; minpack.lm 1.2-3; readr 2.1.4; lubridate 1.9.2; R.utils 2.12.2; cowplot 1.1.1). Some of the data files required to run the scrits are not publicly available and have been excluded from the repository (but can be provided on request). Please report an issue if you have any problems running the code or contact either Kpaul@kirby.unsw.edu.au or Rgray@kirby.unsw.edu.au.
 

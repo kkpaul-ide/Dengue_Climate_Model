@@ -1,5 +1,6 @@
-5-sim_summary.Rmd
-6-chapter3_analysis.Rmd
+# Files that can be ignored
+*/5-sim_summary.Rmd
+*/6-chapter3_analysis.Rmd
 
 .Rhistory
 */.Rhistory

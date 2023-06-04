@@ -17,6 +17,10 @@
 #' equation (default) or a differential equation
 #' @return a number of vectors representing the number of individuals in each compartment at each time 
 #' point, as well as other summary statistics such as new infections, re-infections, and mortality
+#' 
+#' @author Kishor K. Paul \email{Kpaul@kirby.unsw.edu.au}
+#' @author Richard T. Gray \email{Rgray@kirby.unsw.edu.au}
+#' 
 
 den_model <- function(project, params, data, initial_conditions, option = "difference") {
         

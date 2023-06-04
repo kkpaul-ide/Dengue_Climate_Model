@@ -150,6 +150,9 @@ dat[dat$days==max(dat$days)-1,]
 
 ```{r briere function plot}
 
+# Show the changes in mosquito parameters dependent on temperature 
+# following briere fit (1995-2014 to 2030-2049 to 20802099)
+
 load(file.path(projectFolder, "Model_inputs_calibrated.Rda"))
 
 params <- param_sets[1,]
@@ -288,42 +291,14 @@ plot <- ggplot(dataframe) +
 
 ```{r mosquito mortality function plot}
 
+# Show the changes in mortlaity of adult, larva, pupa mortality
+# as temperature changes from 1995-2014 to 2030-2049 to 2080-2099
+
 load(file.path(projectFolder, "Model_inputs_calibrated.Rda"))
 
 params <- param_sets[1,]
 
-larva <- mul_tr_t(seq(1,50), params$mul_tr_c, params$mul_tr_T0, params$mul_tr_Tm, seq(0,300, length.out=50))
-
-pupa <- mup_tr_t(seq(1,50), params$mup_tr_c, params$mup_tr_T0, params$mup_tr_Tm, seq(0,300, length.out=50))
-
-mosquito <- muv_th(seq(1,50), params$muv_c, params$muv_T0, params$muv_Tm, seq(0,3.5, length.out = 50))
-
-hum <- 1
-
-rainfall <- seq(0,350, length.out =80)
-
-temp <- seq(5,45,by=0.1)
-
-mosquito <- vector("list", 50)
-
-for (k in 1:50){
-        for (i in 1:401) {
-                mosquito[[k]][i] <- muv_th(temp[i], params$muv_c, params$muv_T0, params$muv_Tm, hum[k])
-        }
-}
-
-names(mosquito) <- c(paste0(hum))
-
-df <- data.frame(temp, mosquito) %>%
-  melt(id.vars = "temp", na.rm = T)
-df$variable <- as.numeric(str_sub(df$variable, 2))
-  
-ggplot(df, aes(x = temp, y = variable, z = value)) +
-        stat_contour(geom = "polygon", aes(fill = ..level..)) +
-        geom_tile(aes(fill = value))
-
-
-### NEW CONTOUR PLOT
+### CONTOUR PLOT
 
 # Prepare data for contour
 temp <- seq(0, 50, by = 0.1)
@@ -419,8 +394,8 @@ plot <- ggplot(pup_mortality %>% filter(value < 1), aes(x = temp, y = rain, z = 
               axis.text.y = element_text(size=18),
               text = element_text(face = "bold",size=18,colour="black"))
 
-ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "Contour_pupa mortality_v3.png"),
-       plot , width = 35, height = 10, units = "cm") 
+# ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "Contour_pupa mortality_v3.png"),
+#        plot , width = 35, height = 10, units = "cm") 
 
 ### mosquito mortality contour
 mos_mort <- list()
@@ -499,8 +474,8 @@ plot <- ggplot(mos_mortality %>% filter(value <= 0.12), aes(x = temp, y = svpd, 
               axis.text.y = element_text(size=18),
               text = element_text(face = "bold",size=18,colour="black"))
 
-ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "Contour_mosquito mortality_v3.png"),
-       plot , width = 35, height = 10, units = "cm") 
+# ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "Contour_mosquito mortality_v3.png"),
+#        plot , width = 35, height = 10, units = "cm") 
 
 #### adult mosq mortality as a function of SVPD (used in Chapter 2)
 plot_hum_effect <- ggplot(mos_mortality %>% filter(temp == 25), aes(x = svpd, y = value)) + 

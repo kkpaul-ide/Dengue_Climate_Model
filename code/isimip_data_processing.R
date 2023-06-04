@@ -337,79 +337,42 @@ if (reload) {
         hist.station.df <- data.frame(station = rep(df$Station, times = 20089))
         
         # create df of dates corresponding to RCP scenarios 
-        date.df <- data.frame(date = c(rep(seq(as.Date("2006/1/1"), 
-                                               as.Date("2010/12/31"), "days"), each=35),
-                                       rep(seq(as.Date("2011/1/1"), 
-                                               as.Date("2020/12/31"), "days"), each=35),
-                                       rep(seq(as.Date("2021/1/1"), 
-                                               as.Date("2030/12/31"), "days"), each=35),
-                                       rep(seq(as.Date("2031/1/1"), 
-                                               as.Date("2040/12/31"), "days"), each=35),
-                                       rep(seq(as.Date("2041/1/1"), 
-                                               as.Date("2050/12/31"), "days"), each=35),
-                                       rep(seq(as.Date("2051/1/1"), 
-                                               as.Date("2060/12/31"), "days"), each=35),
-                                       rep(seq(as.Date("2061/1/1"), 
-                                               as.Date("2070/12/31"), "days"), each=35),
-                                       rep(seq(as.Date("2071/1/1"), 
-                                               as.Date("2080/12/31"), "days"), each=35),
-                                       rep(seq(as.Date("2081/1/1"), 
-                                               as.Date("2090/12/31"), "days"), each=35),
-                                       rep(seq(as.Date("2091/1/1"), 
-                                               as.Date("2099/12/31"), "days"), each=35)))
+        
+        date.df <- data.frame(date = rep(seq(as.Date("2006/1/1"),
+                                             as.Date("2099/12/31"), "days"), each=35))
         
         # create df of dates corresponding to historical period 
-        hist.date.df <- data.frame(date = c(rep(seq(as.Date("1951/1/1"), 
-                                                    as.Date("1960/12/31"), "days"), each=35),
-                                            rep(seq(as.Date("1961/1/1"), 
-                                                    as.Date("1970/12/31"), "days"), each=35),
-                                            rep(seq(as.Date("1971/1/1"), 
-                                                    as.Date("1980/12/31"), "days"), each=35),
-                                            rep(seq(as.Date("1981/1/1"), 
-                                                    as.Date("1990/12/31"), "days"), each=35),
-                                            rep(seq(as.Date("1991/1/1"), 
-                                                    as.Date("2000/12/31"), "days"), each=35),
-                                            rep(seq(as.Date("2001/1/1"), 
-                                                    as.Date("2005/12/31"), "days"), each=35)))
+        
+        hist.date.df <- data.frame(date = rep(seq(as.Date("1951/1/1"),
+                                             as.Date("2005/12/31"), "days"), each=35))
         
         # column bind district, date and VC for each model
+        
         gfdlRCP45_df <- cbind(station.df, date.df, gfdlRCP45_station) %>% 
-                mutate(gcm = "GFDL-ESM2M") %>%
-                mutate(rcp = "RCP 4.5")
+                mutate(gcm = "GFDL-ESM2M", rcp = "RCP 4.5") 
         gfdlRCP85_df <- cbind(station.df, date.df, gfdlRCP85_station) %>% 
-                mutate(gcm = "GFDL-ESM2M") %>%
-                mutate(rcp = "RCP 8.5")
+                mutate(gcm = "GFDL-ESM2M", rcp = "RCP 8.5")
         hadgemRCP45_df <- cbind(station.df, date.df, hadgemRCP45_station) %>% 
-                mutate(gcm = "HadGEM2-ES") %>%
-                mutate(rcp = "RCP 4.5")
+                mutate(gcm = "HadGEM2-ES", rcp = "RCP 4.5") 
         hadgemRCP85_df <- cbind(station.df, date.df, hadgemRCP85_station) %>% 
-                mutate(gcm = "HadGEM2-ES") %>%
-                mutate(rcp = "RCP 8.5")
+                mutate(gcm = "HadGEM2-ES", rcp = "RCP 8.5")
         ipslRCP45_df <- cbind(station.df, date.df, ipslRCP45_station) %>% 
-                mutate(gcm = "IPSL-CM5A-LR") %>%
-                mutate(rcp = "RCP 4.5")
+                mutate(gcm = "IPSL-CM5A-LR", rcp = "RCP 4.5")
         ipslRCP85_df <- cbind(station.df, date.df, ipslRCP85_station) %>% 
-                mutate(gcm = "IPSL-CM5A-LR") %>%
-                mutate(rcp = "RCP 8.5")
+                mutate(gcm = "IPSL-CM5A-LR", rcp = "RCP 8.5")
         mirocRCP45_df <- cbind(station.df, date.df, mirocRCP45_station) %>% 
-                mutate(gcm = "MIROC5") %>%
-                mutate(rcp = "RCP 4.5")
+                mutate(gcm = "MIROC5", rcp = "RCP 4.5")
         mirocRCP85_df <- cbind(station.df, date.df, mirocRCP85_station) %>% 
-                mutate(gcm="MIROC5") %>%
-                mutate(rcp = "RCP 8.5")
+                mutate(gcm="MIROC5", rcp = "RCP 8.5")
         
         gfdlHist_df <- cbind(hist.station.df, hist.date.df, gfdlHist_station) %>% 
-                mutate(gcm = "GFDL-ESM2M") %>%
-                mutate(rcp = "Historical")
+                mutate(gcm = "GFDL-ESM2M", rcp = "Historical") 
         hadgemHist_df <- cbind(hist.station.df, hist.date.df, hadgemHist_station) %>% 
-                mutate(gcm="HadGEM2-ES") %>%
-                mutate(rcp = "Historical")
+                mutate(gcm="HadGEM2-ES", rcp = "Historical")
         ipslHist_df <- cbind(hist.station.df, hist.date.df, ipslHist_station) %>% 
-                mutate(gcm="IPSL-CM5A-LR") %>%
-                mutate(rcp = "Historical")
+                mutate(gcm="IPSL-CM5A-LR", rcp = "Historical")
         mirocHist_df <- cbind(hist.station.df, hist.date.df, mirocHist_station) %>% 
-                mutate(gcm="MIROC5") %>%
-                mutate(rcp = "Historical")
+                mutate(gcm="MIROC5", rcp = "Historical")
         
         # read and process observed data
         obs_clim <- read.csv(file.path(obsPath, obsFile))
@@ -433,19 +396,10 @@ if (reload) {
            gfdlRCP45_station,gfdlRCP85_station,hadgemRCP45_station,hadgemRCP85_station)
         
         # Bind data for each model into one df
-        hist.station.df <- gfdlRCP45_df %>%
-                full_join(gfdlRCP85_df) %>%
-                full_join(hadgemRCP45_df) %>%
-                full_join(hadgemRCP85_df) %>%
-                full_join(ipslRCP45_df) %>%
-                full_join(ipslRCP85_df) %>%
-                full_join(mirocRCP45_df) %>%
-                full_join(mirocRCP85_df) %>%
-                full_join(gfdlHist_df) %>%
-                full_join(hadgemHist_df) %>%
-                full_join(ipslHist_df) %>%
-                full_join(mirocHist_df) %>%
-                full_join(obs)
+
+        hist.station.df <- reduce(list(gfdlRCP45_df, gfdlRCP85_df, hadgemRCP45_df, hadgemRCP85_df, ipslRCP45_df, 
+                                       ipslRCP85_df, mirocRCP45_df, mirocRCP85_df, gfdlHist_df, hadgemHist_df, 
+                                       ipslHist_df, mirocHist_df, obs), full_join)
         
         # Remove intermediate dfs to free up space
         rm (ipslRCP45_df, ipslRCP85_df, gfdlRCP45_df, gfdlRCP85_df, hadgemRCP45_df, hadgemRCP85_df,

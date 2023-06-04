@@ -14,14 +14,11 @@ require(R.utils)
 
 # Set-up directories ------------------------------------------------------
 basePath <- getwd()
-# dataPath <- file.path(basePath, "data")
+
 outputsPath <- file.path(basePath, "outputs")
 
 # Load model option and function files ------------------------------------
 source("code/functions.R")
-# source("code/den_model.R")
-# source("code/den_model_lee.R")
-# source("code/den_model_caldwell-RTG.R")
 
 # Project directory
 # project_directory <- file.path(basePath, "projects")
@@ -37,89 +34,101 @@ scenario specifications, and outputs
 ```{r User inputs and project set-up}
 
 # Model project name
-project <- "randomYears"
+project <- "base"  # options: "randomYears", "testing_caldwell", 
+                          #"testing_base", "explore_rainfall"
 
-# Simulation time - model unit is days
-startYear <- 1995 # Start Jan 1 this year
-endYear <- 2014 # End Dec 31 this year
-
-# Simulation time-step in days
-dt <- 1/24
-
-# Model options
+# startYear <- 1995 # Start Jan 1 this year
+# endYear <- 2014 # End Dec 31 this year
+# 
+# # Simulation time-step in days
+# dt <- 1/24
+# 
+# # Model options
+# #### need to be specified ###
 model <- "base" # options: "base", "caldwell", "lee"
 modelType <- "difference" # options: "ode", "difference", "stochastic"
-                          # Note: difference = deterministic, 
+                          # Note: difference = deterministic,
                           # stochastic = difference with randomness
 modelSpecs <- c(model, modelType)
 
 location <- "Dhaka"
-gcmOptions <- c("Observed","GFDL-ESM2M","HadGEM2-ES","IPSL-CM5A-LR","MIROC5") # ISIMIP projection options:
-                                          
-rcpOptions <- c("Observed","RCP 4.5", "RCP 8.5")
-
-# get the projected birth and death rate
-projDemRate <- read.csv(file.path(getwd(), "data", "bd_projectedBRDR.csv")) %>%
-  filter(MidPeriod > startYear & MidPeriod < endYear)
-
-birthRate <- projDemRate$CBR
-
-deathRate <- projDemRate$CDR
-
-# Simulation parameters
-sims <- 1 # Number of simulations
+# 
+# if (startYear == 2030 | startYear == 2080) {
+#         gcmOptions <- c("GFDL-ESM2M","HadGEM2-ES","IPSL-CM5A-LR","MIROC5")
+# } else if (startYear == 1995) {
+#         gcmOptions <- c("Observed","GFDL-ESM2M","HadGEM2-ES","IPSL-CM5A-LR","MIROC5")
+# }
+# # gcmOptions <- c("Observed","GFDL-ESM2M","HadGEM2-ES","IPSL-CM5A-LR","MIROC5")
+# # 
+# rcpOptions <- c("Observed","RCP 4.5", "RCP 8.5")
+# 
+# # get the projected birth and death rate
+# projDemRate <- read.csv(file.path(getwd(), "data", "bd_projectedBRDR.csv")) %>%
+#   filter(MidPeriod > startYear & MidPeriod < endYear)
+# 
+# birthRate <- projDemRate$CBR
+# 
+# deathRate <- projDemRate$CDR
+# 
+# # Simulation parameters
+# sims <- 1000 # Number of simulations
 
 # Set-up model project based on the user inputs above ---------------------
 
 pg <- list()
+# pg$sims <- sims
 pg$project <- project
-pg$startYear <- startYear
-pg$endYear <- endYear
-pg$dt <- dt 
-pg$modelSpecs <- modelSpecs 
+# pg$startYear <- startYear
+# pg$endYear <- endYear
+# pg$dt <- dt 
+pg$modelSpecs <- modelSpecs
 pg$location <- location
-pg$gcms <- gcmOptions
-pg$rcps <- rcpOptions
-pg$sims <- sims
-pg$birthRate <- birthRate
-pg$deathRate <- deathRate
-  
-# Various time-step options which can be useful. Main one is pts and npts.
-start_date <- as_date(paste0(startYear, "-01-01"))
-end_date <- as_date(paste0(endYear, "-12-31"))
-days <- as_date(start_date:end_date)
-ndays <- length(days)
-
-pts <- seq(1, ndays, by = pg$dt)
-npts <- length(pts)
-
-pts_times <- as_datetime(start_date + pts -1)
-
-pg$start_date <- start_date
-pg$end_date <- end_date
-pg$days <- days
-pg$ndays <- ndays
-pg$pts <- pts
-pg$npts <- npts
-pg$pts_times <- pts_times
+# pg$gcms <- gcmOptions
+# pg$rcps <- rcpOptions
+# pg$sims <- sims
+# pg$birthRate <- birthRate
+# pg$deathRate <- deathRate
+#   
+# # Various time-step options which can be useful. Main one is pts and npts.
+# start_date <- as_date(paste0(startYear, "-01-01"))
+# end_date <- as_date(paste0(endYear, "-12-31"))
+# days <- as_date(start_date:end_date)
+# ndays <- length(days)
+# 
+# pts <- seq(1, ndays, by = pg$dt)
+# npts <- length(pts)
+# 
+# pts_times <- as_datetime(start_date + pts -1)
+# 
+# pg$start_date <- start_date
+# pg$end_date <- end_date
+# pg$days <- days
+# pg$ndays <- ndays
+# pg$pts <- pts
+# pg$npts <- npts
+# pg$pts_times <- pts_times
 
 # Set-up folders for outputs
 projectFolder <- file.path(outputsPath, project)
 dir.create(projectFolder, showWarnings = FALSE)
 dir.create(file.path(projectFolder, "results"), showWarnings = FALSE)
 
+```
+
+```{r set seed}
 # Set seed (this will be saved in pg which can be re-used by setting 
 # re-sample to FALSE - needed for sampling and stochastic simulations)
-reseed <- TRUE
+reseed <- TRUE 
 if (reseed) {
- sim_seed <- runif(1, 1, 1e6)
+        sim_seed <- runif(1, 1, 1e6)
 } else {
-  sim_seed <- pg$sim_seed
+        sim_seed <- pg$sim_seed
 }
 set.seed(sim_seed)
 pg$sim_seed <- sim_seed
 
 ```
+
 
 ```{r Copy parameter files}
 # Copy template parameter files to project directory. These must 
@@ -130,101 +139,20 @@ file.copy(file.path(basePath, "templates", "parameters.csv"),
   file.path(projectFolder, "parameters.csv"), overwrite = TRUE)
 
 if (model == "caldwell") {
-  file.copy(file.path(basePath, "templates", "caldwell_parameters.csv"), 
-    file.path(projectFolder, "caldwell_parameters.csv"),
-    overwrite = TRUE)
+        file.copy(file.path(basePath, "templates", "caldwell_parameters.csv"), 
+                  file.path(projectFolder, "caldwell_parameters.csv"),
+                  overwrite = TRUE)
 }
 if (model == "base") {
-  file.copy(file.path(basePath, "templates", "base_parameters.csv"), 
-    file.path(projectFolder, "base_parameters.csv"),
-    overwrite = TRUE)
+        file.copy(file.path(basePath, "templates", "base_parameters.csv"), 
+                  file.path(projectFolder, "base_parameters.csv"),
+                  overwrite = TRUE)
 }
-
-```
-
-```{r Load data }
-## ISIMIP data
-load(file.path(basePath, "data", "climateData_station.RData"))
-
-climateData <- list()
-
-for (source in gcmOptions) {
-  print(source)
-  for (scenario in rcpOptions) {
-    print(scenario)
-    climData <- list()
-    tempData <- list()
-    
-    # Extract data
-    clim1 <- subset(clim.station.df, clim.station.df$station==location &
-                      clim.station.df$gcm==source &
-                      clim.station.df$rcp=="Historical")
-    clim2 <- subset(clim.station.df, clim.station.df$station==location &
-                      clim.station.df$gcm==source &
-                      clim.station.df$rcp==scenario)
-    
-    if (length(clim2$gcm)==0) next # skip when Observed with RCP 
-    # or ISIMIP GCM with observed combination
-    
-    clim <- rbind(clim1, clim2) %>%
-      filter(date >= start_date, date <= end_date)
-    
-    # Fill in daily values
-    temp <- fillGap(clim$meanTemp, dt, clim$dtr, option = "temp")
-    hum <- fillGap(clim$SVPD, dt, option = "hum")
-    rain <- fillGap(clim$prec, dt, option = "rain")
-    
-    tempData$temp <- temp 
-    tempData$rain <- rain
-    tempData$hum <- hum
-    if (source=='Observed'){
-      # Observed data is not available after 2016
-      opts <- seq(1, length(clim$date), by = pg$dt)
-      tempData$tdate <- as_datetime(start_date + opts -1)
-    } else {
-      tempData$tdate <- as_datetime(start_date + pts -1)
-    }
-    
-    tempData$source <- source
-    tempData$scenario <- scenario
-    tempData$year <- year(tempData$tdate)
-    
-    # Add data to final data frame
-    climData <- bind_rows(climData, tempData)
-    
-    # Reorder climate data to have the years in random
-    set.seed(sim_seed)
-    tempClimData <- list()
-    randomYears <- list()
-    # for each GCM and RCP, making 10 different sets
-    for (set in 1:10){ 
-      randomYears[[set]] <- sample(startYear:endYear)
-      a <- list()
-      for (years in randomYears[[set]]){
-        #filter data for randomly selected year
-        b <- filter(climData, year==years)
-        a <- bind_rows(a,b)
-      }
-      a$set <- set
-      tempClimData <- bind_rows(tempClimData,a)
-    }
-    climateData <- bind_rows(climateData,tempClimData)
-  }
-}
-
-# Final data frame
-climateData <- as_tibble(climateData) %>%
-  select(tdate, source, scenario, everything())
-# replace missing values with previous observation
-climateData$temp <- zoo::na.locf(climateData$temp) 
-
 
 ```
 
 ```{r Save project specs}
 
-save(pg, climateData, 
-  file = file.path(projectFolder, "Project_specifications.Rda"))
+save(pg, file = file.path(projectFolder, "Project_specifications.Rda"))
 
 ```
-

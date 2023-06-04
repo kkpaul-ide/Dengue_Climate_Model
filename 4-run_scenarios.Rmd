@@ -1,0 +1,121 @@
+# Run different scenarios
+
+
+```{r Setup, echo=FALSE}
+# Restart R and set working directory to source file; i.e. rm(list=ls()) 
+
+# Packages ----------------------------------------------------------------
+require(tidyverse, quietly = TRUE)
+require(lubridate)
+
+source("code/functions.R")
+source("code/ResultFunctions.R") 
+
+# Set-up directories ------------------------------------------------------
+basePath <- getwd()
+# dataPath <- file.path(basePath, "data")
+outputsPath <- file.path(basePath, "outputs")
+
+```
+
+```{r Specify and load project, echo=FALSE}
+
+# Model project name
+project <- "base"
+
+# Load project and model
+projectFolder <- file.path(outputsPath, project)
+load(file.path(projectFolder, "Project_specifications.Rda"))
+load(file.path(projectFolder, "Model_inputs_calibrated.Rda"))
+
+```
+
+```{r Source model, echo=FALSE}
+if (pg$model[1] == "caldwell") {
+  source("archive/code/den_model_caldwell-RTG.R")
+  den_model <- den_model_Caldwell
+} else if (pg$model[1] == "lee") {
+  source("code/den_model_lee.R")
+} else {
+  source("code/den_model.R")
+}
+
+```
+
+```{r run scenarios}
+# Full run model
+if (pg$startYear == 2030) {
+        seroPrevDate <- "2049-12-30"
+} else if (pg$startYear == 2080) {
+        seroPrevDate <- "2099-12-30"
+} else {
+        seroPrevDate <- "2014-12-30"
+}
+
+period <- paste0(pg$startYear,"_", pg$endYear)
+RCP <- "RCP 8.5" # "RCP 8.5"
+
+# input for existing seroprevalence need to be given in script-3
+# to ensure initial conditions are set correctly
+if (param_sets$exseroprev[1]==0.005) {
+        baseline_sero <- "low_baseline_seroprev" 
+} else if (param_sets$exseroprev[1]==0.5) {
+        baseline_sero <- "high_baseline_seroprev"
+}
+
+for (ii in 1:1000) {
+        print(ii)
+        for (jj in pg$gcms) {
+                print(jj)
+                tempScenario <- ifelse(jj == "Observed", "Observed", paste0(RCP))
+                for (kk in tempScenario) {
+                        print(kk)
+                        adjustedDat <- list()
+                        dat <- list()
+                        out <- list()
+                        
+                        if (jj == "Observed"){
+                                years <- randomYears[[1]]  
+                        } else {
+                                years <- randomYears[[ii]]
+                        }
+                        
+                        climateData2 <- climProcess(climateData, source = jj, scenario = kk, 
+                                                    years = years, pg$dt, pg$pts)
+                        
+                        parameters <- param_sets[ii,]
+                        
+                        # Big list storing all the results
+                        out <- den_model(project = pg, 
+                                         params = parameters, 
+                                         data = climateData2, 
+                                         initial_conditions, 
+                                         option = pg$model[2])
+                        #print(sum(is.na(out)))
+                        out$tdate <- climateData2$tdate
+                        out$source <- jj
+                        out$scenario <- kk
+                        out$sim <- ii
+                        
+                        dat <- tibble(bind_rows(dat, out))
+                        
+                        name <- paste(ii,jj,kk)
+                        # Adjust the data into a daily format, aggregate model output and 
+                        # determine seroprev on a specific date 
+                        adjustedDat <- AdjustResults(dat, seroPrevDate, pg)
+                        save(adjustedDat, file = file.path(projectFolder, "savedsims", 
+                                                           paste0(period), paste0(RCP), 
+                                                           # paste0(baseline_sero), 
+                                                           paste0(ii, "_", jj, "_", kk, ".Rda")))
+                        
+                }
+        }
+}
+
+# dat$source_scenario_sim <- ifelse(dat$source == "Observed", paste(dat$source, dat$sim, sep = " "), 
+#                                         paste(dat$source, dat$scenario, dat$sim, sep = " "))
+
+
+
+```
+

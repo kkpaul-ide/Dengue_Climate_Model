@@ -1,0 +1,405 @@
+# Simulate dengue model - Setup sims
+# ======================================
+
+This Rmarkdown script is used to set-up simulations of a specific dengue model. 
+
+```{r Setup}
+# Restart R and set working directory to source file; i.e. rm(list=ls()) 
+
+# Packages ----------------------------------------------------------------
+require(tidyverse, quietly = TRUE)
+
+require(lubridate)
+
+source("code/functions.R")
+
+# Set-up directories ------------------------------------------------------
+basePath <- getwd()
+# dataPath <- file.path(basePath, "data")
+outputsPath <- file.path(basePath, "outputs")
+
+```
+
+```{r Specify and load project}
+
+# Model project name
+project <- "base" # options: "randomYears", "testing_caldwell", "testing_base"
+
+# Load project
+projectFolder <- file.path(outputsPath, project)
+load(file.path(projectFolder, "Project_specifications.Rda"))
+load(file.path(projectFolder, "Model_inputs.Rda"))
+
+folders <- c("1995_2014", 
+             "2030_2049/RCP 4.5/high_baseline_seroprev", "2030_2049/RCP 4.5/low_baseline_seroprev", 
+             "2030_2049/RCP 8.5/high_baseline_seroprev", "2030_2049/RCP 8.5/low_baseline_seroprev", 
+             "2080_2099/RCP 4.5/high_baseline_seroprev", "2080_2099/RCP 4.5/low_baseline_seroprev", 
+             "2080_2099/RCP 8.5/high_baseline_seroprev", "2080_2099/RCP 8.5/low_baseline_seroprev")
+
+for (folder in folders) {
+  dir.create(file.path(projectFolder, "savedsims", folder), recursive = TRUE, showWarnings = FALSE)
+}
+
+# Set-seed for random sampling if required
+
+set.seed(pg$sim_seed)
+
+```
+
+```{r Set-up parameters}
+
+# For the future period simulations change startYear and endYear
+
+pg$startYear <- 1995
+pg$endYear <- 2014
+
+# get the projected birth and death rate
+projDemRate <- read.csv(file.path(getwd(), "data", "bd_projectedBRDR.csv")) %>%
+  filter(MidPeriod > pg$startYear & MidPeriod < pg$endYear)
+
+pg$birthRate <- projDemRate$CBR
+pg$deathRate <- projDemRate$CDR
+
+pg$start_date <- as_date(paste0(pg$startYear, "-01-01"))
+pg$end_date <- as_date(paste0(pg$endYear, "-12-31"))
+days <- as_date(pg$start_date:pg$end_date)
+ndays <- length(days)
+
+pts <- seq(1, ndays, by = pg$dt)
+npts <- length(pts)
+
+pts_times <- as_datetime(pg$start_date + pts -1)
+
+pg$days <- days
+pg$ndays <- ndays
+pg$pts <- pts
+pg$npts <- npts
+pg$pts_times <- pts_times
+
+# Read in parameter files and convert to appropriate values at each time 
+# point
+
+params <- read.csv(file.path(projectFolder, "parameters.csv"))
+
+paramstype <- params %>% select(parameter, type)
+paramsEstimate <- params2df(params, "value") 
+paramsLower <- params2df(params, "lower")
+paramsUpper <- params2df(params, "upper")
+
+if (pg$modelSpecs[1] == "base") {
+  modelParams <- read.csv(file.path(projectFolder, "base_parameters.csv"))
+  
+  paramstype <- paramstype %>%
+    bind_rows(modelParams %>% select(parameter, type))
+  
+  modelValue <- modelParams %>%
+    params2df("value")
+  
+  modelValueUp <- modelParams %>%
+    params2df("upper")
+  
+  modelValueLo <- modelParams %>%
+    params2df("lower")
+  
+  # Adjust and append to parameters
+  paramsEstimate <- paramsEstimate %>%
+    bind_cols(modelValue)
+  paramsLower <- paramsLower %>%
+    bind_cols(modelValueLo) 
+  paramsUpper <- paramsUpper %>%
+    bind_cols(modelValueUp)
+  
+} else if (pg$modelSpecs[1] == "caldwell") {
+  modelParams <- read.csv(file.path(projectFolder, "caldwell_parameters.csv")) 
+  
+  paramstype <- paramstype %>%
+    bind_rows(modelParams %>% select(parameter, type))
+  
+  modelValue <- modelParams %>%
+    filter(!(parameter == "Kthr")) %>%
+    mutate(value = as.numeric(value)) %>%
+    params2df("value") %>%
+    mutate(Kthr = filter(modelParams, parameter == "Kthr")$value)
+  
+  modelValueUp <- modelParams %>%
+    filter(!(parameter == "Kthr")) %>%
+    mutate(upper = as.numeric(upper)) %>%
+    params2df("upper") %>%
+    mutate(Kthr = filter(modelParams, parameter == "Kthr")$upper)
+  
+  modelValueLo <- modelParams %>%
+    filter(!(parameter == "Kthr")) %>%
+    mutate(lower = as.numeric(lower)) %>%
+    params2df("lower") %>%
+    mutate(Kthr = filter(modelParams, parameter == "Kthr")$lower)
+
+  # Adjust and append to parameters
+  paramsEstimate <- paramsEstimate %>%
+    bind_cols(modelValue)  
+  paramsLower <- paramsLower %>%
+    bind_cols(modelValueLo) 
+  paramsUpper <- paramsUpper %>%
+    bind_cols(modelValueUp) 
+}
+
+# Loop over number of sims and samples
+
+#### I would make a function that converts all the parameters into 
+#### appropriate time points and values - 
+#### setupmodel(params, project)
+
+if (pg$model[2] %in% c("difference", "stochastic")) {
+  
+  rates <- filter(paramstype, type == "rate")$parameter
+  
+  paramsRates <- select(paramsEstimate, one_of(rates))
+  # Convert rates per day to probabilities per day
+  paramsRates <- data.frame(lapply(paramsRates, function(x) prob(x, pg$dt)))
+  
+  paramsEstimate <- paramsEstimate %>%
+    select(-one_of(rates)) %>%
+    bind_cols(paramsRates)
+  
+  
+  paramsLow <- select(paramsLower, one_of(rates))
+  # Convert rates per day to probabilities per day
+  paramsLow <- data.frame(lapply(paramsLow, function(x) prob(x, pg$dt)))
+  
+  paramsLower <- paramsLower %>%
+    select(-one_of(rates)) %>%
+    bind_cols(paramsLow)
+  
+  paramsUp <- select(paramsUpper, one_of(rates))
+  # Convert rates per day to probabilities per day
+  paramsUp <- data.frame(lapply(paramsUp, function(x) prob(x, pg$dt)))
+  
+  paramsUpper <- paramsUpper %>%
+    select(-one_of(rates)) %>%
+    bind_cols(paramsUp)
+  
+} else {
+  # Leave parameters as rates       
+}
+
+# NEED TO ADD SAMPLING FROM parameter ranges
+
+paramSamp <- list()
+
+for (ii in colnames(paramsEstimate)){
+  name <- paste(ii)
+  if (ii == "sigma1" | ii == "sigma2") {
+    # number of cross protection days exponentially distributed
+    # 1. sample from exponentially distributed number of days with cross protection,
+    # 2. took inverse to get daily rate 
+    # 3. then converted to probability for each timestep
+    # source: https://www.programmingr.com/examples/neat-tricks/sample-r-function/rexp/
+    paramSamp[[name]] <- prob(1/sample(x = seq(1/params$upper[params$parameter==ii], 
+                                           1/params$lower[params$parameter==ii], 
+                                           length.out = 10000),
+                                       size = pg$sims-1,
+                                       prob = dexp((seq(1/params$upper[params$parameter==ii],
+                                                        1/params$lower[params$parameter==ii],
+                                                        length.out = 10000)),
+                                                   rate = params$value[params$parameter==ii])), pg$dt)
+  } else if (ii == "alpha1" | ii == "alpha2" | ii == "gamma1" | ii == "gamma1"){
+    # intrinsic latent period - gamma distribution
+    # 1. sample from gamma distributed intrinsic latent period (days),
+    # 2. took inverse to get daily rate 
+    # 3. then converted to probability for each timestep
+    # source: https://statisticsglobe.com/gamma-distribution-in-r-dgamma-pgamma-qgamma-rgamma
+    
+    paramSamp[[name]] <- prob(1/sample(x = seq(1/params$upper[params$parameter==ii],
+                                               1/params$lower[params$parameter==ii],
+                                               length.out = 10000), 
+                                       size = pg$sims-1, 
+                                       prob = dgamma((seq(1/params$upper[params$parameter==ii],
+                                                          1/params$lower[params$parameter==ii],
+                                                          length.out = 10000)),
+                                                     shape = 1/params$value[params$parameter==ii])), pg$dt)
+  } else if (ii == "ADE") {
+    # ADE is not a rate
+    paramSamp[[name]] <- sample(x = seq(params$lower[params$parameter==ii],
+                                               params$upper[params$parameter==ii],
+                                               length.out = 10000), 
+                                       size = pg$sims-1, 
+                                       prob = dgamma((seq(params$lower[params$parameter==ii],
+                                                          params$upper[params$parameter==ii],
+                                                          length.out = 10000)),
+                                                     shape = params$value[params$parameter==ii]))
+  } else {
+    paramSamp[[name]] <- runif(pg$sims-1, paramsLower[[ii]], paramsUpper[[ii]])
+  }
+}
+
+samples <- bind_rows(paramSamp) %>%
+  mutate(set = 2:pg$sims) %>%
+  select(set, everything())
+
+# Store all parameter sets in a parameter sets variable. 
+
+param_sets <- paramsEstimate %>%
+  mutate(set = 1) %>%
+  select(set, everything()) %>%
+  rbind(samples)
+
+
+numSets <- pg$sims-1
+dat_name <- c("biting_rate", "infection_probability", "oviposition_rate",
+              "pupaeTransition_rate", "transmission_prob", 
+              "virusIncubation_rate", "larvaeMaturation_rate", "mosquito_mortality_rate",
+              "pupa_mortality_rate", "larva_mortality_rate")
+
+param_names <- c("a", "pMI", "EFD", "PMR", "pIM", "PDR", "LMR", "muv", "mup_tr", "mul_tr")
+
+samp <- matrix(data = c(1:pg$sims))
+
+for (ii in 1:length(dat_name)) {
+        if (param_names[ii] == "muv" | param_names[ii] =="mul_tr" | param_names[ii] =="mup_tr") {
+                dat <- read.csv(file.path(getwd(), "data", "fitted_parameters", paste0(dat_name[ii],"_sets.csv"))) 
+                names_col <- c(paste0(param_names[ii],"_c"),
+                               paste0(param_names[ii],"_Tm"),paste0(param_names[ii],"_T0"))
+                dat1 <- dat %>%
+                        filter(id != "Apparent") %>%
+                        sample_n(numSets, replace = FALSE) %>%
+                        bind_rows(dat %>% filter(id == "Apparent")) %>%
+                        arrange(id) %>%
+                        select(-id)
+                colnames(dat1) <- names_col
+                samp <- cbind(samp, dat1)
+                
+        } else {
+                dat <- read.csv(file.path(getwd(), "data", "fitted_parameters", paste0(dat_name[ii],"_sets.csv")))
+                names_col <- c(paste0(param_names[ii],"_c"),paste0(param_names[ii],"_m"),
+                               paste0(param_names[ii],"_Tm"),paste0(param_names[ii],"_T0"))
+                dat1 <- dat %>%
+                        filter(id != "Apparent") %>%
+                        sample_n(numSets, replace = FALSE) %>%
+                        bind_rows(dat %>% filter(id == "Apparent")) %>%
+                        arrange(id) %>%
+                        select(-id) 
+                colnames(dat1) <- names_col
+                samp <- cbind(samp, dat1)
+        }
+}
+
+param_sets <- cbind(param_sets,samp) %>%
+  select(-samp) %>%
+  select(set, everything())
+
+# Adjusted parameters after testing 
+
+if (pg$startYear == 2030){
+        param_sets$start1 <- 2030
+        param_sets$start2 <- 2035
+} else if (pg$startYear == 2080) {
+        param_sets$start1 <- 2080
+        param_sets$start2 <- 2085 
+} else {
+        param_sets$start1 <- 1995
+        param_sets$start2 <- 2000
+}
+
+param_sets$influx1 <- 1
+param_sets$influx2 <- 1
+param_sets$kfactor <- 6 # 7.5
+param_sets$betaIM <- 0.45 #0.41, 0.32
+param_sets$betaMI <- 0.45 #0.41
+param_sets$serofactor <- 1/8
+
+if (pg$startYear == 2030){
+        net <- 0.18e-5
+} else if (pg$startYear == 2080) {
+        net <- 0.16e-5
+} else {
+        net <- 0.21e-5
+}
+
+param_sets$im <- 1.4e-5
+param_sets$em <- param_sets$im - net
+
+```
+
+```{r Load data }
+## ISIMIP data
+load(file.path(basePath, "data", "climateData_station.RData"))
+
+climateData <- subset(clim.station.df, clim.station.df$station==pg$location) %>%
+  filter(date >= pg$start_date, date <= pg$end_date)
+
+set.seed(pg$sim_seed)
+
+randomYears <- list(pg$startYear:pg$endYear)
+
+# First set is usual ordered years
+for (set in 2:pg$sims){
+        randomYears[[set]] <- sample(pg$startYear:pg$endYear)
+}
+
+if (pg$startYear == 2030 | pg$startYear == 2080) {
+        gcmOptions <- c("GFDL-ESM2M","HadGEM2-ES","IPSL-CM5A-LR","MIROC5")
+} else if (pg$startYear == 1995) {
+        gcmOptions <- "Observed"
+}
+
+if (pg$startYear == 2030 | pg$startYear == 2080) {
+        rcpOptions <- c("RCP 4.5", "RCP 8.5")
+} else if (pg$startYear == 1995) {
+        rcpOptions <- "Observed"
+}
+
+## User input required: To run 1995-2014 on ISIMIP data
+climDataSource <- "ISIMIP" # "Observed"
+
+if (climDataSource == "ISIMIP") {
+  gcmOptions <- c("GFDL-ESM2M","HadGEM2-ES","IPSL-CM5A-LR","MIROC5")
+  rcpOptions <- c("RCP 4.5", "RCP 8.5")
+} else {
+  #do nothing
+  gcmOptions <- gcmOptions
+  rcpOptions <- rcpOptions
+}
+
+####
+
+pg$gcms <- gcmOptions
+pg$rcps <- rcpOptions
+
+```
+
+```{r Initial populations after calibration}
+
+if (pg$startYear == 2030){
+        initialPop <- 2.8076e7 # 
+} else if (pg$startYear == 2080) {
+        initialPop <- 4.6e7 
+} else {
+        initialPop <- params$value[params$parameter=="pop"]
+}
+
+## User input required for existing seroprevalence
+param_sets$exseroprev <- 0.005 # 0.005
+#####
+
+initialVector <- params$value[params$parameter=="m"]*initialPop
+
+if (pg$modelSpecs[1] == "caldwell") {
+  
+  initial_conditions <- data.frame("s_v"=initialVector,"e_v"=0,"i_v"=0,
+                                   "s_h"=initialPop,"e_h"=0,"i_h"=10,"r"=0)
+} else if (pg$modelSpecs[1] == "base"){
+  
+  initial_conditions <- data.frame("s_l"=0, "i_l1"=0, "i_l2"=0, "s_p"=0, "i_p1"=0, "i_p2"=0,
+                                   "s_v"=initialVector,"e_v1"=0,"e_v2"=0,"i_v1"=0,"i_v2"=0,
+                                   "s_h"=initialPop*(1-param_sets$exseroprev[1]),"e_h1"=0,"e_h2"=0,
+                                   "i_h1"=0,"i_h2"=0,"ci_h1"=0,"ci_h2"=0,"r_h1"=0,
+                                   "r_h2"=0,"e_h12"=0,"e_h21"=0,"i_h12"=0,"i_h21"=0,"r"=initialPop*param_sets$exseroprev[1])
+  
+}
+```
+
+
+```{r Save model inputs}
+# Save model inputs 
+save(pg, params, modelParams, param_sets, initial_conditions, climateData, randomYears, 
+        file = file.path(projectFolder, "Model_inputs_calibrated.Rda"))
+```

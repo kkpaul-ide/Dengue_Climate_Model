@@ -1,5 +1,9 @@
-#' function to aggregate model simulation output and determine seroprev on a specific date  
-
+#' Function to aggregate model simulation output and determine seroprev on a specific date.
+#' The AdjustResults() function in R takes three inputs:
+#' 
+#' @param dat a data frame containing the simulation results
+#' @param date a date string in the format of yyyy-mm-dd
+#' @param pg a list containing the parameters for the simulation
 
 AdjustResults <- function(dat, date, pg) {
         
@@ -19,10 +23,10 @@ AdjustResults <- function(dat, date, pg) {
         dat$date <- pg$start_date + dat$days-1
         dat$month <- month(dat$date)
         dat$year <- year(dat$date)
-        
+
         annInfections <- dat %>%
                 group_by(year) %>%
-                summarise(infections = sum(newInfections))
+                summarise(infections = sum(newInfections), na.rm = TRUE)
 
         monthInfections <- dat %>%
                 group_by(year, month) %>%
@@ -36,21 +40,3 @@ AdjustResults <- function(dat, date, pg) {
         
 }
 
-
-gcmPlotMonthly <- function (dat, gcm) {
-        ggplot(dat %>% 
-                       filter(dat$Model==gcm) %>% 
-                       group_by(year, month) %>% 
-                       summarise(Infections = mean(infections), 
-                                 minInfections = min(infections), 
-                                 maxInfections = max(infections)),
-               aes(x = year + month/12)) + 
-                geom_ribbon(aes(ymin = minInfections, ymax = maxInfections), fill = "grey") +
-                geom_line(aes(y = Infections),color = "red") +
-                scale_x_continuous(breaks = seq(pg$startYear, pg$endYear),
-                                   labels = EveryNth(seq(pg$startYear, pg$endYear), 5, inverse = TRUE),
-                                   limits = c(pg$startYear, pg$endYear)) +
-                xlab(paste(gcm)) + ylab("Dengue infections per month") + 
-                coord_cartesian(xlim = c(pg$startYear, pg$endYear), ylim = c(0, 6e5)) +
-                PlotOptions()
-}

@@ -8,8 +8,8 @@ This Rmarkdown script is used to set-up a specific dengue model parameters.
 
 # Packages ----------------------------------------------------------------
 require(tidyverse, quietly = TRUE)
-# require(readr)
-# require(lubridate)
+require(readr)
+require(lubridate)
 
 source("code/functions.R")
 
@@ -23,168 +23,218 @@ outputsPath <- file.path(basePath, "outputs")
 ```{r Specify and load project}
 
 # Model project name
-project <- "testing_base"
+project <- "base" # options: "randomYears", "testing_caldwell", "testing_base"
 
 # Load project
 projectFolder <- file.path(outputsPath, project)
 load(file.path(projectFolder, "Project_specifications.Rda"))
 
-# Set-seed for random sampling if required
-# 
+```
+
+```{r user inputs}
+startYear <- 1995 # Start Jan 1 this year
+endYear <- 2014 # End Dec 31 this year
+
+# Simulation time-step in days
+dt <- 1/24
+
+# Determine GCM and RCP options based on start year
+if (startYear == 2030 | startYear == 2080) {
+        gcmOptions <- c("GFDL-ESM2M","HadGEM2-ES","IPSL-CM5A-LR","MIROC5")
+} else if (startYear == 1995) {
+        gcmOptions <- "Observed"
+}
+
+if (startYear == 2030 | startYear == 2080) {
+        rcpOptions <- c("Observed","RCP 4.5", "RCP 8.5")
+} else if (startYear == 1995) {
+        rcpOptions <- "Observed"
+}
+
+# Read projected birth and death rate data and filter based on time period
+projDemRate <- read.csv(file.path(getwd(), "data", "bd_projectedBRDR.csv")) %>%
+  filter(MidPeriod > startYear & MidPeriod < endYear)
+
+# Extract birth and death rates
+birthRate <- projDemRate$CBR
+deathRate <- projDemRate$CDR
+
+# Simulation parameters
+sims <- 1000 # Number of simulations
+
+pg$sims <- sims
+pg$startYear <- startYear
+pg$endYear <- endYear
+pg$dt <- dt 
+pg$gcms <- gcmOptions
+pg$rcps <- rcpOptions
+pg$birthRate <- birthRate
+pg$deathRate <- deathRate
+  
+# Various time-step options which can be useful. Main one is pts and npts.
+start_date <- as_date(paste0(startYear, "-01-01"))
+end_date <- as_date(paste0(endYear, "-12-31"))
+days <- as_date(start_date:end_date)
+ndays <- length(days)
+
+pts <- seq(1, ndays, by = pg$dt)
+npts <- length(pts)
+
+pts_times <- as_datetime(start_date + pts -1)
+
+pg$start_date <- start_date
+pg$end_date <- end_date
+pg$days <- days
+pg$ndays <- ndays
+pg$pts <- pts
+pg$npts <- npts
+pg$pts_times <- pts_times
 
 ```
+
+
 
 
 ```{r Set-up parameters}
 
-# Read in parameter files and convert to appropriate values at each time 
-# point
-
+# Read in parameter files and convert to appropriate values at each time point
 params <- read.csv(file.path(projectFolder, "parameters.csv"))
 
 paramstype <- params %>% select(parameter, type)
 paramsEstimate <- params2df(params, "value") 
-paramsLower <- params2df(params, "lower")
-paramsUpper <- params2df(params, "upper")
 
 if (pg$modelSpecs[1] == "base") {
-  modelParams <- read.csv(file.path(projectFolder, "base_parameters.csv"))
-  
-  paramstype <- paramstype %>%
-    bind_rows(modelParams %>% select(parameter, type))
-  
-  modelValue <- modelParams %>%
-    params2df("value")
-
-    # Adjust and append to parameters
-  paramsEstimate <- paramsEstimate %>%
-    bind_cols(modelValue)
-  
+        modelParams <- read.csv(file.path(projectFolder, "base_parameters.csv"))
+        
+        paramstype <- paramstype %>%
+                bind_rows(modelParams %>% select(parameter, type))
+        
+        modelValue <- modelParams %>%
+                params2df("value")
+        
+        # Adjust and append to parameters
+        paramsEstimate <- paramsEstimate %>%
+                bind_cols(modelValue)
+        
 } else if (pg$modelSpecs[1] == "caldwell") {
-  modelParams <- read.csv(file.path(projectFolder, "caldwell_parameters.csv")) 
-
-  paramstype <- paramstype %>%
-    bind_rows(modelParams %>% select(parameter, type))
-  
-  modelValue <- modelParams %>%
-    filter(!(parameter == "Kthr")) %>%
-    mutate(value = as.numeric(value)) %>%
-    params2df("value") %>%
-    mutate(Kthr = filter(modelParams, parameter == "Kthr")$value)
-  
-  # TODO lower and upper values with Kthr the same for each
-  
-  # Adjust and append to parameters
-  paramsEstimate <- paramsEstimate %>%
-    bind_cols(modelValue) 
-  
+        modelParams <- read.csv(file.path(projectFolder, "caldwell_parameters.csv")) 
+        
+        paramstype <- paramstype %>%
+                bind_rows(modelParams %>% select(parameter, type))
+        
+        modelValue <- modelParams %>%
+                filter(!(parameter == "Kthr")) %>%
+                mutate(value = as.numeric(value)) %>%
+                params2df("value") %>%
+                mutate(Kthr = filter(modelParams, parameter == "Kthr")$value)
+        
+        # Adjust and append to parameters
+        paramsEstimate <- paramsEstimate %>%
+                bind_cols(modelValue)  
 }
 
 # Loop over number of sims and samples
 
-#### I would make a function that converts all the parameters into 
-#### appropriate time points and values - 
 #### setupmodel(params, project)
 
 if (pg$model[2] %in% c("difference", "stochastic")) {
-  
-  # fixed parameters - SHOULDNT These be in parameters?  
-  # params$ie, paramsBR, params$DR???      
-  
-  # ie  <- rep(1 - exp(- 0.01* dt), npts) # Why need to be repeated??
-  # 
-  # BR <- rep(1 - exp(-(5.121/(1000*360))* dt),npts)
-  # 
-  # DR <- rep(1 - exp(-(5.121/(1000*360))* dt), npts)
-  
-  rates <- filter(paramstype, type == "rate")$parameter
-  paramsRates <- select(paramsEstimate, one_of(rates))
-  # Convert rates per day to probabilities per day
-  paramsRates <- data.frame(lapply(paramsRates, function(x) prob(x, pg$dt)))
-  
-  paramsEstimate <- paramsEstimate %>%
-    select(-one_of(rates)) %>%
-    bind_cols(paramsRates)
-  
-  param_sets <- paramsEstimate
-  
-  # Repeat for lower and upper
-  
-  # Convert rates per day to probabilities per day for using difference equation
-  #### ARE ALL THE FUNCTION PARAMTERS HERE IN params?
-  
-  # a <- 1 - exp(-a_t(temp) * dt)
-  # 
-  # PDR <- 1 - exp(-PDR_t(temp) * dt)
-  # 
-  # muv <- 1 - exp(-muv_th(temp,hum) * dt)
-  # 
-  # LMR <- 1 - exp(-LMR_t(temp) * dt)
-  # 
-  # PMR <- 1 - exp(-PMR_t(temp) * dt)
-  # 
-  # mul_tr <- 1 - exp(-mul_tr_t(temp,rain) * dt)
-  # 
-  # mup_tr <- 1 - exp(-mup_tr_t(temp,rain) * dt)
-  # 
-  # EFD <- 1 - exp(-EFD_t(temp) * dt)
-  
+        
+        rates <- filter(paramstype, type == "rate")$parameter
+        
+        paramsRates <- select(paramsEstimate, one_of(rates))
+        # Convert rates per day to probabilities per day
+        paramsRates <- data.frame(lapply(paramsRates, function(x) prob(x, pg$dt)))
+        
+        paramsEstimate <- paramsEstimate %>%
+                select(-one_of(rates)) %>%
+                bind_cols(paramsRates)
+        
 } else {
-  # Leave parameters as rates       
+        # Leave parameters as rates       
 }
 
-# NEED TO ADD SAMPLING FROM parameter ranges
+dat_name <- c("biting_rate", "infection_probability", "oviposition_rate",
+              "pupaeTransition_rate", "transmission_prob", 
+              "virusIncubation_rate", "larvaeMaturation_rate", "mosquito_mortality_rate",
+              "pupa_mortality_rate", "larva_mortality_rate")
 
+param_names <- c("a", "pMI", "EFD", "PMR", "pIM", "PDR", "LMR", "muv", "mup_tr", "mul_tr")
 
-# Store all parameter sets in a parameter sets variable. 
+samp <- matrix(data = NA, nrow = 1)
 
-param_sets <- paramsEstimate %>%
-  mutate(set = 0) %>%
-  select(set, everything())
+for (ii in 1:length(dat_name)) {
+        if (param_names[ii] == "muv" | param_names[ii] =="mul_tr" | param_names[ii] =="mup_tr"){
+                dat <- read.csv(file.path(getwd(), "data", "fitted_parameters", paste0(dat_name[ii],"_sets.csv")),nrows=1) %>%
+                        select(-id)
+                names_col <- c(paste0(param_names[ii],"_c"),
+                               paste0(param_names[ii],"_Tm"),paste0(param_names[ii],"_T0"))
+                colnames(dat) <- names_col
+                samp <- cbind(samp, dat)
+        } else {
+                dat <- read.csv(file.path(getwd(), "data", "fitted_parameters", paste0(dat_name[ii],"_sets.csv")),nrows=1) %>%
+                        select(-id)
+                names_col <- c(paste0(param_names[ii],"_c"),paste0(param_names[ii],"_m"),
+                               paste0(param_names[ii],"_Tm"),paste0(param_names[ii],"_T0"))
+                colnames(dat) <- names_col
+                samp <- cbind(samp, dat)
+        }
+        
+        
+}
+
+param_set <- cbind(paramsEstimate,samp) %>%
+        select(-samp)
 
 ```
 
-```{r Initial populations}
+```{r Load data }
+# Load ISIMIP data
+load(file.path(basePath, "data", "climateData_station.RData"))
 
-#### POTENTIALLY PUT INTO ANOTHER CSV FILE OR STORE IN PARAMS. 
+# Subset climate data based on location and time period
+climateData <- subset(clim.station.df, clim.station.df$station==pg$location) %>%
+        filter(date >= pg$start_date, date <= pg$end_date)
 
-# Set-up infected inputs to reflect migration
+# Set seed for reproducibility
+set.seed(pg$sim_seed)
 
-entry_h1 <- rep(0,pg$npts)
-entry_h2 <- rep(0,pg$npts)
+# Create a list of random years
+randomYears <- list(pg$startYear:pg$endYear)
 
+# Generate random sets of years, first set is usual ordered years
+for (set in 2:pg$sims){
+        randomYears[[set]] <- sample(pg$startYear:pg$endYear)
+}
 
-# Will need to put this into the model equations.
-entry_h1[1] <- 10
-entry_h2[pg$pts[pg$pts_times == lubridate::as_datetime("2004-01-01")]] <- 1 
-# Corresponds to start of 2004
+```
 
-dengue_entry <- list()
-dengue_entry$entry_h1 <- entry_h1
-dengue_entry$entry_h2 <- entry_h2
+```{r Initial populations for calibration}
 
+if (pg$startYear == 2030){
+        initialPop <- 2.8076e7 # 
+} else if (pg$startYear == 2080) {
+        initialPop <- 4.6e7 # https://www.academia.edu/68878767/Socioeconomic_Pathways_and_Regional_Distribution_of_the_Worlds_101_Largest_Cities
+} else {
+        initialPop <- params$value[params$parameter=="pop"]
+}
 
-# Put s_v and s_h into the parameters file
-# Set-up initial conditions
-# initial_conditions <- data.frame("s_l"=0, "i_l1"=0, "i_l2"=0, "s_p"=0, "i_p1"=0, "i_p2"=0,
-#                                  "s_v"=1600000,"e_v1"=0,"e_v2"=0,"i_v1"=0,"i_v2"=0,
-#                                  "s_h"=8332000,"e_h1"=0,"e_h2"=0,"i_h1"=entry_h1[1],"i_h2"=entry_h2[1],"ci_h1"=0,
-#                                  "ci_h2"=0,"r_h1"=0,"r_h2"=0,"e_h12"=0,"e_h21"=0,"i_h12"=0,"i_h21"=0,"r"=0)
+# initialPop <- params$value[params$parameter=="pop"] 
+initialVector <- params$value[params$parameter=="m"]*initialPop
 
-initialPop <- 8332000 # params$pop 
-initialVector <- 2*initialPop #params$m*initialPop
+param_set$exseroprev <- 0.0054
 
 if (pg$modelSpecs[1] == "caldwell") {
-  
-  initial_conditions <- data.frame("s_v"=initialVector,"e_v"=0,"i_v"=0,
-                                 "s_h"=initialPop,"e_h"=0,"i_h"=10,"r"=0)
+        
+        initial_conditions <- data.frame("s_v"=initialVector,"e_v"=0,"i_v"=0,
+                                         "s_h"=initialPop,"e_h"=0,"i_h"=10,"r"=0)
 } else if (pg$modelSpecs[1] == "base"){
-  
-  initial_conditions <- data.frame("s_l"=0, "i_l1"=0, "i_l2"=0, "s_p"=0, "i_p1"=0, "i_p2"=0,
-                                 "s_v"=initialVector,"e_v1"=0,"e_v2"=0,"i_v1"=0,"i_v2"=0,
-                                 "s_h"=initialPop,"e_h1"=0,"e_h2"=0,"i_h1"=1,"i_h2"=0,"ci_h1"=0,
-                                 "ci_h2"=0,"r_h1"=0,"r_h2"=0,"e_h12"=0,"e_h21"=0,"i_h12"=0,"i_h21"=0,"r"=0)
-  
+        
+        initial_conditions <- data.frame("s_l"=0, "i_l1"=0, "i_l2"=0, "s_p"=0, "i_p1"=0, "i_p2"=0,
+                                         "s_v"=initialVector,"e_v1"=0,"e_v2"=0,"i_v1"=0,"i_v2"=0,
+                                         "s_h"=initialPop*(1-param_set$exseroprev),"e_h1"=0,"e_h2"=0,
+                                         "i_h1"=0,"i_h2"=0,"ci_h1"=0,"ci_h2"=0,"r_h1"=0,
+                                         "r_h2"=0,"e_h12"=0,"e_h21"=0,"i_h12"=0,"i_h21"=0,"r"=initialPop*param_set$exseroprev)
+        
 }
 
 ```
@@ -192,9 +242,7 @@ if (pg$modelSpecs[1] == "caldwell") {
 
 ```{r Save model inputs}
 # Save model inputs 
-save(params, modelParams, param_sets, initial_conditions, #dengue_entry, 
+save(pg, climateData, randomYears, params, modelParams, param_set, initial_conditions, 
         file = file.path(projectFolder, "Model_inputs.Rda"))
-
-
 ```
 

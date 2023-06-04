@@ -1,0 +1,591 @@
+```{r , echo=FALSE}
+# Restart R and set working directory to source file; i.e. rm(list=ls()) 
+
+# Packages ----------------------------------------------------------------
+require(tidyverse)
+require(LeftysRpkg)
+require(cowplot)
+
+
+basePath <- getwd()
+outputsPath <- file.path(basePath, "outputs")
+project <- "base"
+projectFolder <- file.path(outputsPath, project)
+
+# source plotting functions
+source("code/plotting_functions.R")
+source("code/functions.R")
+```
+
+```{r figures using plotting functions, echo=FALSE}
+#### plot monthly infections
+
+seroprevalence1 <- "low_baseline_seroprev"
+seroprevalence2 <- "high_baseline_seroprev" 
+
+low_MonthInf <- plot_MonInf(seroprevalence1)
+high_MonthInf <- plot_MonInf(seroprevalence2) 
+
+ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "seasonality_high_base_seroprev_v3.png"),
+       high_Seasonality , width = 35, height = 20, units = "cm")
+
+#### Plot seroprevalence
+
+low_SeroPrev <- plot_SeroPrev(seroprevalence1)
+high_SeroPrev <- plot_SeroPrev(seroprevalence2) 
+
+#### Plot Annual Peak and annual total infections 
+
+low_plot <- plot_annPeak(seroprevalence1)
+high_plot <- plot_annPeak(seroprevalence2) 
+
+low_totINf <- plot_annInf(seroprevalence1)
+high_totINf <- plot_annInf(seroprevalence2)
+
+##### Plot seasonality
+
+low_Seasonality <- plot_Seasonality(seroprevalence1)
+high_Seasonality <- plot_Seasonality(seroprevalence2) 
+
+##### Plot seasonality - monthly proportions
+
+low_SeasonalityProp <- plot_SeasonalityProp(seroprevalence1)
+high_SeasonalityProp <- plot_SeasonalityProp(seroprevalence2) 
+
+#### Plot mosquito population
+
+mos_plot <- seasonal_plot_Nv(seroprevalence1)
+
+############# Table 2 Chapter 5 #########
+
+baseline_sero <- "low_baseline_seroprev" #"high_baseline_seroprev" # "low_baseline_seroprev"  
+period1 <- "2030_2049"
+period2 <- "2080_2099" 
+RCP1 <- "RCP 4.5"
+RCP2 <- "RCP 8.5"
+year_range <- "1995_2014"
+
+## Annual peak
+simFolder <- file.path(projectFolder, "savedsims", paste0(year_range), "Observed")
+# load summary file with output from 1000 sims
+datDf <- extractorRData(file.path(simFolder,"sim_summary.Rda"), 'datDf')
+# Create Model and Set variable from combined model variable
+datDf[c('Sim', 'GCM', 'RCP')] <- str_split_fixed(datDf$model, ' ', 3)
+df1 <-  aggregate(datDf$newInfections, list(datDf$year,datDf$Sim, datDf$GCM, datDf$RCP), FUN=max)
+rm(datDf)
+
+periods <- c(period1, period2)
+RCPs <- c(RCP1, RCP2)
+# Create an empty list to store the results
+df_list <- list()
+
+# Loop over the periods and RCPs
+for (i in seq_along(periods)){
+        for (j in seq_along(RCPs)){
+                # Define the path to the simulation folder
+                # simFolder <- file.path(projectFolder, "savedsims", paste0(periods[i]), paste0(RCPs[j]), paste0(baseline_sero))
+                simFolder <- file.path(projectFolder, "savedsims", paste0(year_range), paste0(RCPs[j]))
+                # Load the datDf object from the simulation summary file
+                datDf <- extractorRData(file.path(simFolder,"sim_summary.Rda"), 'datDf')
+                # Split the model column into three separate columns
+                datDf[c('Sim', 'GCM', 'RCP')] <- str_split_fixed(datDf$model, ' ', 3)
+                 # Aggregate newInfections by year, Sim, GCM, and RCP, taking the maximum value
+                df_temp <- aggregate(datDf$newInfections, list(datDf$year,datDf$Sim, datDf$GCM, datDf$RCP), FUN=max) %>%
+                        mutate(Group.3 = paste0(periods[i],"_",Group.3))
+                # Add the aggregated data to the list
+                df_list[[length(df_list) + 1]] <- df_temp
+                # Remove unnecessary variables from memory
+                rm(datDf, df_temp)
+        }
+}
+
+df2 <- do.call(rbind, df_list)
+df <- rbind(df1, df2)
+
+# Filter the values in df$x based on the condition df$Group.4 != RCP2, and group them by df$Group.3 
+# Apply the quantile function to each group of values and aggregate the results
+aggregate(df$x[df$Group.4 != RCP2], list(df$Group.3[df$Group.4 != RCP2]), quantile)
+
+## Annual infections
+
+# read annInfectionsDf from all summary files and put in on df and then
+# run the following command
+aggregate(df$infections[df$RCP != RCP2], list(df$GCM[df$RCP != RCP2]), quantile)
+
+# to get annInfectionsDf aggregate between 2000-2014
+aggregate(df1$infections[df1$RCP != RCP2 & df1$year >= 2000], 
+          list(df1$GCM[df1$RCP != RCP2 & df1$year >= 2000]), quantile)
+
+## seroprevalence
+
+tempdat <- list()
+for (i in 1:length(periods)){
+        for (j in 1:length(RCPs)){
+                # simFolder <- file.path(projectFolder, "savedsims", paste0(year_range))
+                simFolder <- file.path(projectFolder, "savedsims", paste0(year_range), paste0(RCPs[j]))
+                # simFolder <- file.path(projectFolder, "savedsims", paste0(periods[i]), paste0(RCPs[j]), paste0(baseline_sero))
+                datDf <- extractorRData(file.path(simFolder,"sim_summary.Rda"), 'datDf')
+                # Create Model and Set variable from combined model variable
+                datDf[c('Sim', 'GCM', 'RCP')] <- str_split_fixed(datDf$model, ' ', 3)
+                name <- paste(periods[i],RCPs[j])
+                tempdat[[name]] <- datDf %>% group_by(days, GCM) %>%
+                        summarise(medPrev = median(seroPrev),
+                                  lowerIQR =  quantile(seroPrev, 0.25, na.rm = TRUE),
+                                  upperIQR =  quantile(seroPrev, 0.75, na.rm = TRUE))
+                rm(datDf)
+        }
+}
+dat <- unnest(enframe(tempdat))
+
+dat[dat$days==max(dat$days)-1,]
+
+```
+
+```{r briere function plot}
+
+load(file.path(projectFolder, "Model_inputs_calibrated.Rda"))
+
+params <- param_sets[1,]
+
+Biting_rate <- briere(10:50, params$a_T0, params$a_Tm, params$a_m, params$a_c)
+
+Virus_Incubation_Rate <- briere(10:50, params$PDR_T0, params$PDR_Tm, params$PDR_m, params$PDR_c)
+Larva_Maturation_Rate <- briere(10:50, params$LMR_T0, params$LMR_Tm, params$LMR_m, params$LMR_c) 
+Pupa_Maturation_Rate <- briere(10:50, params$PMR_T0, params$PMR_Tm, params$PMR_m, params$PMR_c) 
+Oviposition_Rate <- briere(10:50, params$EFD_T0, params$EFD_Tm, params$EFD_m, params$EFD_c) 
+Probability_mosquito_infection  <- params$betaMI * briere(10:50, params$pMI_T0, params$pMI_Tm, params$pMI_m, params$pMI_c)
+Probability_human_infection  <- params$betaIM * briere(10:50, params$pIM_T0, params$pIM_Tm, params$pIM_m, params$pIM_c)
+
+Biting_rate_Probability_human_infection <- briere(10:50, params$a_T0, params$a_Tm, params$a_m, params$a_c) * 
+        params$betaIM * briere(10:50, params$pIM_T0, params$pIM_Tm, params$pIM_m, params$pIM_c)
+
+Biting_rate_Probability_mosquito_infection <- briere(10:50, params$a_T0, params$a_Tm, params$a_m, params$a_c) * 
+        params$betaMI * briere(10:50, params$pMI_T0, params$pMI_Tm, params$pMI_m, params$pMI_c)
+
+temperature <- c(10:50)
+
+dataframe1 <- data.frame(temperature, Oviposition_Rate, Virus_Incubation_Rate, Larva_Maturation_Rate, 
+                         Pupa_Maturation_Rate, Biting_rate_Probability_human_infection, Biting_rate_Probability_mosquito_infection)
+
+dataframe2 <- data.frame(temperature, Oviposition_Rate, Biting_rate_Probability_human_infection)
+
+dat <- dataframe1 %>%
+        pivot_longer(cols=c('Oviposition_Rate', 'Virus_Incubation_Rate', 'Larva_Maturation_Rate', 
+                            'Pupa_Maturation_Rate', 'Biting_rate_Probability_human_infection', 
+                            'Biting_rate_Probability_mosquito_infection'),
+                     names_to='trait',
+                     values_to='values')
+dataframe <- merge(dat, as.data.frame(pg$gcms), all = T)
+colnames(dataframe)[4] ="gcm"
+
+library(lubridate)
+
+
+clim1 <- clim.station.df %>%
+        filter(gcm != "Observed", station == station_name, date >= "1995-01-01", date <= "2014-12-31") %>%
+        select(gcm,rcp,date,meanTemp) %>%
+        mutate(Month = month(date), Year = year(date)) %>%
+        filter(Month == 10) %>%
+        group_by(gcm, Year) %>%
+        summarise(temperature = mean(meanTemp)) %>%
+        mutate(Oviposition_Rate = briere(temperature, params$EFD_T0, params$EFD_Tm, params$EFD_m, params$EFD_c),
+               Virus_Incubation_Rate = briere(temperature, params$PDR_T0, params$PDR_Tm, params$PDR_m, params$PDR_c),
+               Larva_Maturation_Rate = briere(temperature, params$LMR_T0, params$LMR_Tm, params$LMR_m, params$LMR_c),
+               Pupa_Maturation_Rate = briere(temperature, params$PMR_T0, params$PMR_Tm, params$PMR_m, params$PMR_c),
+               Biting_rate_Probability_human_infection = briere(temperature, params$a_T0, params$a_Tm, params$a_m, params$a_c) * 
+                       params$betaIM * briere(temperature, params$pIM_T0, params$pIM_Tm, params$pIM_m, params$pIM_c),
+               Biting_rate_Probability_mosquito_infection = briere(temperature, params$a_T0, params$a_Tm, params$a_m, params$a_c) * 
+                       params$betaMI * briere(temperature, params$pMI_T0, params$pMI_Tm, params$pMI_m, params$pMI_c)) %>%
+         pivot_longer(cols=c('Oviposition_Rate', 'Virus_Incubation_Rate', 'Larva_Maturation_Rate', 
+                            'Pupa_Maturation_Rate', 'Biting_rate_Probability_human_infection', 
+                            'Biting_rate_Probability_mosquito_infection'),
+                     names_to='trait',
+                     values_to='values') %>%
+        mutate(year_gcm = paste("1995_2014"))
+
+clim2 <- clim.station.df %>%
+        filter(station == station_name, date >= "2030-01-01", date <= "2049-12-31") %>%
+        select(gcm,rcp,date,meanTemp) %>%
+        mutate(Month = month(date), Year = year(date)) %>%
+        filter(Month == 10) %>%
+        group_by(gcm, Year) %>%
+        summarise(temperature = mean(meanTemp)) %>%
+        mutate(Oviposition_Rate = briere(temperature, params$EFD_T0, params$EFD_Tm, params$EFD_m, params$EFD_c),
+               Virus_Incubation_Rate = briere(temperature, params$PDR_T0, params$PDR_Tm, params$PDR_m, params$PDR_c),
+               Larva_Maturation_Rate = briere(temperature, params$LMR_T0, params$LMR_Tm, params$LMR_m, params$LMR_c),
+               Pupa_Maturation_Rate = briere(temperature, params$PMR_T0, params$PMR_Tm, params$PMR_m, params$PMR_c),
+               Biting_rate_Probability_human_infection = briere(temperature, params$a_T0, params$a_Tm, params$a_m, params$a_c) * 
+                       params$betaIM * briere(temperature, params$pIM_T0, params$pIM_Tm, params$pIM_m, params$pIM_c),
+               Biting_rate_Probability_mosquito_infection = briere(temperature, params$a_T0, params$a_Tm, params$a_m, params$a_c) * 
+                       params$betaMI * briere(temperature, params$pMI_T0, params$pMI_Tm, params$pMI_m, params$pMI_c)) %>%
+         pivot_longer(cols=c('Oviposition_Rate', 'Virus_Incubation_Rate', 'Larva_Maturation_Rate', 
+                            'Pupa_Maturation_Rate', 'Biting_rate_Probability_human_infection', 
+                            'Biting_rate_Probability_mosquito_infection'),
+                     names_to='trait',
+                     values_to='values') %>%
+        mutate(year_gcm = paste("2030_2049"))
+
+clim3 <- clim.station.df %>%
+        filter(station == station_name, date >= "2080-01-01", date <= "2099-12-31") %>%
+        select(gcm,rcp,date,meanTemp) %>%
+        mutate(Month = month(date), Year = year(date)) %>%
+        filter(Month == 10) %>%
+        group_by(gcm, Year) %>%
+        summarise(temperature = mean(meanTemp)) %>%
+        mutate(Oviposition_Rate = briere(temperature, params$EFD_T0, params$EFD_Tm, params$EFD_m, params$EFD_c),
+               Virus_Incubation_Rate = briere(temperature, params$PDR_T0, params$PDR_Tm, params$PDR_m, params$PDR_c),
+               Larva_Maturation_Rate = briere(temperature, params$LMR_T0, params$LMR_Tm, params$LMR_m, params$LMR_c),
+               Pupa_Maturation_Rate = briere(temperature, params$PMR_T0, params$PMR_Tm, params$PMR_m, params$PMR_c),
+               Biting_rate_Probability_human_infection = briere(temperature, params$a_T0, params$a_Tm, params$a_m, params$a_c) * 
+                       params$betaIM * briere(temperature, params$pIM_T0, params$pIM_Tm, params$pIM_m, params$pIM_c),
+               Biting_rate_Probability_mosquito_infection = briere(temperature, params$a_T0, params$a_Tm, params$a_m, params$a_c) * 
+                       params$betaMI * briere(temperature, params$pMI_T0, params$pMI_Tm, params$pMI_m, params$pMI_c)) %>%
+         pivot_longer(cols=c('Oviposition_Rate', 'Virus_Incubation_Rate', 'Larva_Maturation_Rate', 
+                            'Pupa_Maturation_Rate', 'Biting_rate_Probability_human_infection', 
+                            'Biting_rate_Probability_mosquito_infection'),
+                     names_to='trait',
+                     values_to='values') %>%
+        mutate(year_gcm = paste("2080_2099"))
+
+clim <- rbind(clim1, clim2, clim3)
+
+# New facet label names for trait variable
+trait.labs <- c("Oviposition Rate", "VIR", "LMR", "PMR",
+                "Infection Rate", "Transmission Rate")
+names(trait.labs) <- c('Oviposition_Rate', 'Virus_Incubation_Rate', 'Larva_Maturation_Rate', 
+                            'Pupa_Maturation_Rate', 'Biting_rate_Probability_human_infection', 
+                            'Biting_rate_Probability_mosquito_infection')
+library(scales)        
+cols <- hue_pal()(3)
+
+plot <- ggplot(dataframe) +
+        geom_line(aes(temperature, values))+
+        facet_grid(trait~gcm, scales = "free_y", labeller = labeller(trait=trait.labs))+
+        geom_point(clim, mapping = aes(x = temperature, y = values, group = year_gcm, col = year_gcm), size = 3, alpha=0.5)+
+        scale_color_manual(values = rev(cols))+
+        xlab("Temperature")+ylab("Values")+
+        theme(legend.text = element_text(size=18),
+              axis.text.x = element_text(size=18),
+              axis.text.y = element_text(size=18),
+              legend.title = element_blank(), legend.position="top",
+              text = element_text(face = "bold",size=18,colour="black"),
+              panel.background = element_blank(),
+              axis.line = element_line(colour = "black"))
+
+ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "Briere function plot_v5.png"),
+       plot , width = 35, height = 40, units = "cm")        
+        
+
+```
+
+
+```{r mosquito mortality function plot}
+
+load(file.path(projectFolder, "Model_inputs_calibrated.Rda"))
+
+params <- param_sets[1,]
+
+larva <- mul_tr_t(seq(1,50), params$mul_tr_c, params$mul_tr_T0, params$mul_tr_Tm, seq(0,300, length.out=50))
+
+pupa <- mup_tr_t(seq(1,50), params$mup_tr_c, params$mup_tr_T0, params$mup_tr_Tm, seq(0,300, length.out=50))
+
+mosquito <- muv_th(seq(1,50), params$muv_c, params$muv_T0, params$muv_Tm, seq(0,3.5, length.out = 50))
+
+hum <- 1
+
+rainfall <- seq(0,350, length.out =80)
+
+temp <- seq(5,45,by=0.1)
+
+mosquito <- vector("list", 50)
+
+for (k in 1:50){
+        for (i in 1:401) {
+                mosquito[[k]][i] <- muv_th(temp[i], params$muv_c, params$muv_T0, params$muv_Tm, hum[k])
+        }
+}
+
+names(mosquito) <- c(paste0(hum))
+
+df <- data.frame(temp, mosquito) %>%
+  melt(id.vars = "temp", na.rm = T)
+df$variable <- as.numeric(str_sub(df$variable, 2))
+  
+ggplot(df, aes(x = temp, y = variable, z = value)) +
+        stat_contour(geom = "polygon", aes(fill = ..level..)) +
+        geom_tile(aes(fill = value))
+
+
+### NEW CONTOUR PLOT
+
+# Prepare data for contour
+temp <- seq(0, 50, by = 0.1)
+svpd <- seq(0, 3, by = 0.1)
+rainfall <- seq(0, 470, length.out = 50)
+
+### larva mortality contour
+larv_mort <- list()
+pup_mort <- list()
+
+for (k in 1:length(rainfall)){
+        for (i in 1:length(temp)) {
+                name <- paste(rainfall[k],temp[i],sep = "_")
+               larv_mort[[name]] <- mul_tr_t(temp[i], params$mul_tr_c, params$mul_tr_T0, params$mul_tr_Tm, rainfall[k])
+               pup_mort[[name]] <- mup_tr_t(temp[i], params$mup_tr_c, params$mup_tr_T0, params$mup_tr_Tm, rainfall[k])
+        }
+}
+
+larv_mortality <- unnest(enframe(larv_mort))
+larv_mortality[c('rain', 'temp')] <- str_split_fixed(larv_mortality$name, "_", 2)
+larv_mortality$rain <- as.numeric(larv_mortality$rain)
+larv_mortality$temp <- as.numeric(larv_mortality$temp)
+
+pup_mortality <- unnest(enframe(pup_mort))
+pup_mortality[c('rain', 'temp')] <- str_split_fixed(pup_mortality$name, "_", 2)
+pup_mortality$rain <- as.numeric(pup_mortality$rain)
+pup_mortality$temp <- as.numeric(pup_mortality$temp)
+
+load(file.path(basePath, "data", "climateData_station.RData"))
+
+# Define the Dhaka station
+station_name <- "Dhaka"
+
+clim1 <- clim.station.df %>%
+        filter(gcm != "Observed", rcp != "Historical", station == station_name, date >= "1995-01-01", date <= "2014-12-31") %>%
+        select(gcm,rcp,date,meanTemp, prec_14day) %>%
+        mutate(Month = month(date), Year = year(date)) %>%
+        filter(Month == 10) %>%
+        group_by(gcm, Year, rcp) %>%
+        summarise(temperature = mean(meanTemp),
+                  rain = mean(prec_14day)) %>%
+        mutate(value = mul_tr_t(temperature, params$mul_tr_c, params$mul_tr_T0, params$mul_tr_Tm, rain)) %>%
+        mutate(Period = "1995_2014") %>%
+        mutate(Period_RCP = paste(Period, rcp, sep = " "))
+clim2 <- clim.station.df %>%
+        filter(station == station_name, date >= "2030-01-01", date <= "2049-12-31") %>%
+        select(gcm,rcp,date,meanTemp, prec_14day) %>%
+        mutate(Month = month(date), Year = year(date)) %>%
+        filter(Month == 10) %>%
+        group_by(gcm, Year, rcp) %>%
+        summarise(temperature = mean(meanTemp),
+                  rain = mean(prec_14day)) %>%
+        mutate(value = mul_tr_t(temperature, params$mul_tr_c, params$mul_tr_T0, params$mul_tr_Tm, rain)) %>%
+        mutate(Period = "2030_2049") %>%
+        mutate(Period_RCP = paste(Period, rcp, sep = " "))
+clim3 <- clim.station.df %>%
+        filter(station == station_name, date >= "2080-01-01", date <= "2099-12-31") %>%
+        select(gcm,rcp,date,meanTemp, prec_14day) %>%
+        mutate(Month = month(date), Year = year(date)) %>%
+        filter(Month == 10) %>%
+        group_by(gcm, Year, rcp) %>%
+        summarise(temperature = mean(meanTemp),
+                  rain = mean(prec_14day)) %>%
+        mutate(value = mul_tr_t(temperature, params$mul_tr_c, params$mul_tr_T0, params$mul_tr_Tm, rain)) %>%
+        mutate(Period = "2080_2099") %>%
+        mutate(Period_RCP = paste(Period, rcp, sep = " "))
+clim <- rbind(clim1, clim2, clim3)
+
+desired <- c("1995_2014 RCP 8.5",
+             "2030_2049 RCP 8.5",
+             "2080_2099 RCP 8.5")
+cbPalette <- c("#F0E442",  "#D55E00", "#CC79A7")
+
+# cbPalette <- c("#56B4E9", "#0072B2", "#E69F00", "#F0E442",  "#D55E00", "#CC79A7")
+
+plot <- ggplot(pup_mortality %>% filter(value < 1), aes(x = temp, y = rain, z = value)) +
+        stat_contour(geom = "polygon", aes(fill = ..level..)) +
+        geom_tile(aes(fill = value))+
+        stat_contour(bins = 30) +
+        # Limit x axis to highlight changes
+        xlim(20,43)+
+        xlab("Temperature") +
+        ylab("Rainfall") +
+        guides(fill = guide_colorbar(title = "Mortality"))+
+        scale_fill_viridis()+
+        geom_point(clim %>% filter(Period_RCP %in% desired),
+                   mapping = aes(x=temperature, y=rain, group=Period_RCP, col =Period_RCP),alpha=0.7)+
+        scale_color_manual(values=cbPalette)+
+        facet_grid(~gcm)+
+        theme(panel.background = element_blank())+
+        theme(legend.text = element_text(size=18),
+              axis.text.x = element_text(size=18),
+              axis.text.y = element_text(size=18),
+              text = element_text(face = "bold",size=18,colour="black"))
+
+ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "Contour_pupa mortality_v3.png"),
+       plot , width = 35, height = 10, units = "cm") 
+
+### mosquito mortality contour
+mos_mort <- list()
+
+for (k in 1:length(svpd)){
+        for (i in 1:length(temp)) {
+                name <- paste(svpd[k],temp[i],sep = "_")
+               mos_mort[[name]] <- muv_th(temp[i], params$muv_c, params$muv_T0, params$muv_Tm, svpd[k])
+        }
+}
+mos_mortality <- unnest(enframe(mos_mort))
+mos_mortality[c('svpd', 'temp')] <- str_split_fixed(mos_mortality$name, "_", 2)
+mos_mortality$svpd <- as.numeric(mos_mortality$svpd)
+mos_mortality$temp <- as.numeric(mos_mortality$temp)
+
+load(file.path(basePath, "data", "climateData_station.RData"))
+
+# Define the Dhaka station
+station_name <- "Dhaka"
+
+clim1 <- clim.station.df %>%
+        filter(gcm != "Observed",  rcp != "Historical", station == station_name, date >= "1995-01-01", date <= "2014-12-31") %>%
+        select(gcm,rcp,date,meanTemp, SVPD) %>%
+        mutate(Month = month(date), Year = year(date)) %>%
+        filter(Month == 10) %>%
+        group_by(gcm, Year, rcp) %>%
+        summarise(temperature = mean(meanTemp),
+                  svpd = mean(SVPD)) %>%
+        mutate(value = muv_th(temperature, params$muv_c, params$muv_T0, params$muv_Tm, svpd)) %>%
+        mutate(Period = "1995_2014") %>%
+        mutate(Period_RCP = paste(Period, rcp, sep = " "))
+
+clim2 <- clim.station.df %>%
+        filter(station == station_name, date >= "2030-01-01", date <= "2049-12-31") %>%
+        select(gcm,rcp,date,meanTemp, SVPD) %>%
+        mutate(Month = month(date), Year = year(date)) %>%
+        filter(Month == 10) %>%
+        group_by(gcm, Year, rcp) %>%
+        summarise(temperature = mean(meanTemp),
+                  svpd = mean(SVPD)) %>%
+        mutate(value = muv_th(temperature, params$muv_c, params$muv_T0, params$muv_Tm, svpd)) %>%
+        mutate(Period = "2030_2049") %>%
+        mutate(Period_RCP = paste(Period, rcp, sep = " "))
+
+clim3 <- clim.station.df %>%
+        filter(station == station_name, date >= "2080-01-01", date <= "2099-12-31") %>%
+        select(gcm,rcp,date,meanTemp, SVPD) %>%
+        mutate(Month = month(date), Year = year(date)) %>%
+        filter(Month == 10) %>%
+        group_by(gcm, Year, rcp) %>%
+        summarise(temperature = mean(meanTemp),
+                  svpd = mean(SVPD)) %>%
+        mutate(value = muv_th(temperature, params$muv_c, params$muv_T0, params$muv_Tm, svpd)) %>%
+        mutate(Period = "2080_2099") %>%
+        mutate(Period_RCP = paste(Period, rcp, sep = " "))
+
+clim <- rbind(clim1, clim2, clim3)
+
+plot <- ggplot(mos_mortality %>% filter(value <= 0.12), aes(x = temp, y = svpd, z = value)) +
+        stat_contour(geom = "polygon", aes(fill = ..level..)) +
+        geom_tile(aes(fill = value))+
+        stat_contour(bins = 30) +
+        # Limit x axis to highlight changes
+        xlim(20,40)+
+        xlab("Temperature") +
+        ylab("SVPD") +
+        guides(fill = guide_colorbar(title = "Mortality"))+
+        scale_fill_viridis()+
+        geom_point(clim %>% filter(Period_RCP %in% desired), 
+                   mapping = aes(x=temperature, y=svpd, group=Period_RCP, col =Period_RCP),alpha=0.7)+
+        scale_color_manual(values = cbPalette)+
+        facet_grid(~gcm)+
+        theme(panel.background = element_blank())+
+        theme(legend.text = element_text(size=18),
+              axis.text.x = element_text(size=18),
+              axis.text.y = element_text(size=18),
+              text = element_text(face = "bold",size=18,colour="black"))
+
+ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "Contour_mosquito mortality_v3.png"),
+       plot , width = 35, height = 10, units = "cm") 
+
+#### adult mosq mortality as a function of SVPD (used in Chapter 2)
+plot_hum_effect <- ggplot(mos_mortality %>% filter(temp == 25), aes(x = svpd, y = value)) + 
+        geom_line(size = 1.5)+
+        ylab("Mortality rate") +
+        xlab("Saturation vapour pressure deficit (SVPD)") +
+        theme(legend.title = element_blank(), legend.position="none",
+                      text = element_text(face = "bold",size=18,colour="black"),
+                      panel.background = element_blank(),
+                      axis.line = element_line(colour = "black"))
+
+plot_hum_effect
+
+ggsave(file.path(basePath, "docs", "Chapter 2", "Figures", "mosq_mortality_svpd.png"),
+       plot_hum_effect , width = 15, height = 10, units = "cm") 
+
+```
+
+```{r}
+## Compare ISIMIP data over three periods -------------------------------------------------------
+
+load(file.path(basePath, "data", "climateData_station.RData"))
+
+periods <- c("1995-2014", "2030-2049", "2080-2099")
+
+df_list <- list()
+
+for(i in 1:length(periods)){
+        period <- periods[i]
+        start_date <- paste0(strsplit(period, "-")[[1]][1],"-","01","-","01")
+        end_date <- paste0(strsplit(period, "-")[[1]][2],"-","12","-","31")
+        
+        # Filter observed data
+        df <- clim.station.df %>%
+                filter(station == pg$location, date >= start_date, date <= end_date)
+        if(i == 1){
+                df <- df %>% filter(rcp == "Observed")
+        }
+        df <- df %>%
+                mutate(month = month(date)) %>%
+                group_by(gcm, rcp, month) %>%
+                summarise(meanTemp = mean(meanTemp, na.rm = TRUE),
+                          maxTemp = mean(maxTemp, na.rm = TRUE),
+                          minTemp = mean(minTemp, na.rm = TRUE)) %>%
+                mutate(period = period)
+        
+        df_list[[i]] <- df
+}
+
+#merge all data frames together
+df <- Reduce(function(x, y) merge(x, y, all=TRUE), df_list)
+
+data_long <- melt(df,
+                  # ID variables - all the variables to keep but not split apart on
+                  id.vars=c("gcm", "rcp", "month", "period"),
+                  # Name of the destination column that will identify the original
+                  # column that the measurement came from
+                  variable.name="condition",
+                  value.name="measurement")
+
+
+ggplot() +
+ geom_line(data_long %>% filter(gcm!="Observed"), mapping = aes(x = month, y = measurement, color = gcm)) +
+        labs(x = "Month", y = "Temperature (°C)")+
+        facet_grid(condition~rcp+period) +
+        scale_x_continuous(breaks = round(seq(1,12, by = 1),1),
+                           labels = c("J","F","M","A","M","J","J","A","S","O","N","D")) +
+        theme_bw() +
+        theme(legend.title = element_blank(),
+              legend.text = element_text(size=8),
+              legend.position="top",
+              axis.text.x = element_text(size=8),
+              axis.text.y = element_text(size=8))+
+        geom_line(data_long %>% 
+                          filter(gcm=="Observed") %>%
+                          select(month, condition, measurement), mapping = aes(x = month, y = measurement))
+        
+
+```
+
+
+```{r}
+## ISIMIP-based vs observed data-based model results over 1995-2014---------------------------------------
+
+baseline_period <- "1995_2014"
+
+validation_plot <- validation_plot_MonInf(baseline_period)
+
+validation_plot_prevalence_seasinality <- validation_plot_sero_season(baseline_period)
+
+ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "validation_plot_prevalence_seasonality_4.png"),
+       validation_plot_prevalence_seasinality , width = 35, height = 12, units = "cm")
+
+```
+

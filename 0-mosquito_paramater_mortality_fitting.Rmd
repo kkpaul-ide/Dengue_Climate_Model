@@ -1,20 +1,16 @@
-Mosquito parameter fitting
-==========================
+Mosquito parameter fitting - mortality rates
+============================================
 
-This script is used to (re)fit a Briere function to published mosquito data to 
+This script is used to fit a Quadratic function to published mosquito data to 
 generate best estimates and uncertainty in key variables that are dependent 
 on temperature, humidity and rainfall. This is done to replace polynomial 
 fitting previously used and determine the values of the underlying parameters 
 which were not published. 
 
 The key parameters are:
-* Biting rate
-* Infection probability
-* Transmission probability
-* Oviposition rate
-* Larvae maturation rate
-* Pupae transition rate
-* Extrinsic incubation rate
+* Mosquito mortality rate
+* Larvae mortality rate
+* Pupae mortality rate
 
 For each of these variables estimates and uncertainty for the underlying 
 parameters are produced. 
@@ -28,56 +24,26 @@ library(tidymodels)
 library(minpack.lm)
 
 # User inputs - change these for different variables
-parameter <- "pupaeTransition_rate"
+parameter <- "larva_mortality_rate"
 
-# For specified parameter set file of data and constraints on tmin, tmax, a and m parameters
-# of the Briere function - constraints set based on guess and check and the 
-# fits in the paper Mordecai et al (2017) paper (where raw data came from)
+# For specified parameter set file of data and constraints on tmin, tmax, and a parameters
+# of the Quadratic function - constraints set based on guess and check
 
-if (parameter == "biting_rate") {
-  fileName <- "Biting_rate-Extraction.csv"
-  tminMin <- 0; tminMax <- Inf
-  tmaxMin <- 35; tmaxMax <- 45
-  mMin <- 0; mMax <- 10
-  aMin <- 0; aMax <- 0.00008
-} else if (parameter == "infection_probability") {
-  fileName <- "infection_probability_data.csv"
-  tminMin <- 10; tminMax <- 20
-  tmaxMin <- 35; tmaxMax <- 45
-  mMin <- 0; mMax <- 10
-  aMin <- 0; aMax <- 0.0005
-} else if (parameter == "oviposition_rate"){
-  fileName <- "Egg_per_female_per_day-Extractions.csv"
-  tminMin <- 11; tminMax <- 21
-  tmaxMin <- 32; tmaxMax <- 42
-  mMin <- 0; mMax <- 10
-  aMin <- 0; aMax <- 0.009
-} else if (parameter == "pupaeTransition_rate"){
-  # fileName <- "Tansition_rate_pupae-Yang2014.csv"
-  fileName <- "Tansition_rate_pupae-Extraction.csv"
-  # data extracted from Yang et al. 2009.
-  tminMin <- 10; tminMax <- 15
-  tmaxMin <- 40; tmaxMax <- 45
-  mMin <- 0; mMax <- 5
-  aMin <- 0; aMax <- 0.0001
-} else if (parameter == "transmission_prob"){
-  fileName <- "transmission_probability_data.csv"
-  tminMin <- 10; tminMax <- 20 
-  tmaxMin <- 35; tmaxMax <- 50
-  mMin <- 0; mMax <- 10
-  aMin <- 0; aMax <- 0.0015
-} else if (parameter == "virusIncubation_rate"){
-  fileName <- "Virus_incubation_rate-Extraction.csv"
+if (parameter == "mosquito_mortality_rate") {
+  fileName <- "Mortality_rate_mosquito_extraction.csv"
   tminMin <- -Inf; tminMax <- Inf
-  tmaxMin <- -Inf; tmaxMax <- 50
-  mMin <- 0; mMax <- 10
-  aMin <- 0; aMax <- 0.00014
-} else if (parameter == "larvaeMaturation_rate"){
-  fileName <- "Tansition_rate_larvae-Yang2014.csv"
-  tminMin <- 10; tminMax <- 20
-  tmaxMin <- 35; tmaxMax <- 45 
-  mMin <- 0; mMax <- 10
-  aMin <- 0; aMax <- 0.00814
+  tmaxMin <- -Inf; tmaxMax <- Inf
+  aMin <- -Inf; aMax <- Inf
+} else if (parameter == "pupa_mortality_rate"){
+  fileName <- "Mortality_rate_pupa_extraction.csv"
+  tminMin <- -Inf; tminMax <- Inf
+  tmaxMin <- -Inf; tmaxMax <- Inf
+  aMin <- -Inf; aMax <- Inf
+} else if (parameter == "larva_mortality_rate"){
+  fileName <- "Mortality_rate_larva_extraction.csv"
+  tminMin <- -Inf; tminMax <- Inf
+  tmaxMin <- -Inf; tmaxMax <- Inf
+  aMin <- -Inf; aMax <- Inf
 }
 
 # Source Briere function for fitting 
@@ -102,36 +68,17 @@ mosDataClean <- mosData %>%
         mutate(temperature = round(temperature, 3),
           estimate = round(estimate, 3)) %>%
         mutate(estimate = ifelse(estimate < 0.01, 0, estimate))
-# Add a data point based on Mordecai et al 2017 paper
-if (parameter == "transmission_prob") {
-mosDataClean <- mosDataClean %>%
-  bind_rows(tibble(temperature = 39, estimate = 0))
-} else if (parameter == "infection_probability") {
-mosDataClean <- mosDataClean %>%
-  bind_rows(tibble(temperature = 40, estimate = 0))  
-} else if (parameter == "virusIncubation_rate") {
-mosDataClean <- mosDataClean %>%
-  bind_rows(tibble(temperature = 45, estimate = 0))  
-# } else if (parameter == "pupaeTransition_rate") {
-# mosDataClean <- mosDataClean %>%
-#   bind_rows(tibble(temperature = 45, estimate = 0))  
-} else if (parameter == "larvaeMaturation_rate") {
-mosDataClean <- mosDataClean %>%
-  bind_rows(tibble(temperature = 42, estimate = 0))  
-}
-
-highlight <- mosDataClean[length(mosDataClean$temperature),]
 
 ```
 
 # Best estimate parameters
 
-First we do a non-linear least squares fit using a Briere function. 
+First we do a non-linear least squares fit using a quadratic function. 
 
 ```{r Best estimate fitting }
 # Guess and check to fine tune initial conditions
 tseq <-  mosDataClean$temperature
-qplot(tseq, briere(tseq, 15, 40, 2, 0.00025), 
+qplot(tseq, inverted_quadratic(tseq, -0.09, 8, 42), 
       geom = "line", 
       ylim = c(0, NA), 
       xlim = c(0, 50), 
@@ -139,37 +86,25 @@ qplot(tseq, briere(tseq, 15, 40, 2, 0.00025),
         geom_point(aes(y = mosDataClean$estimate), colour = "blue") +
         PlotOptions()
 
-if (parameter == "biting_rate") {
-  initialParList <- list(tmin = 16, tmax = 40, m = 1, a = 0.00004)
-} else if (parameter == "infection_probability"){
-  initialParList <- list(tmin = 16, tmax = 40, m = 2, a = 0.0000102)
-} else if (parameter == "oviposition_rate"){
-  initialParList <- list(tmin = 10, tmax = 40, m = 3, a = 0.00455)
-} else if (parameter == "pupaeTransition_rate"){
-  initialParList <- list(tmin = 10, tmax = 41, m = 1, a = 0.0004)
-} else if (parameter == "virusIncubation_rate"){
-  initialParList <- list(tmin = 15, tmax = 45, m = 2, a = 0.00005)
-} else if (parameter == "transmission_prob"){
-  initialParList <- list(tmin = 18, tmax = 39, m = 2, a = 0.00065)
-} else if (parameter == "larvaeMaturation_rate"){
-  initialParList <- list(tmin = 14, tmax = 41, m = 2, a = 0.005)
+if (parameter == "mosquito_mortality_rate") {
+  initialParList <- list(tmin = 10, tmax = 40, a = -0.15)
+} else if (parameter == "pupa_mortality_rate"){
+  initialParList <- list(tmin = 6, tmax = 42, a = -0.04)
+} else if (parameter == "larva_mortality_rate"){
+  initialParList <- list(tmin = 8, tmax = 42, a = -0.09)
 }
 
 # Fit model --------------------------------------------------------------------
 # First with all parameters being free 
-fitModel1 <- nlsLM(estimate ~ briere(temperature, tmin, tmax, m, a), 
+fitModel1 <- nlsLM(estimate ~ inverted_quadratic(temperature, a, tmin, tmax), 
                  data = mosDataClean, 
                  start = initialParList,
-                 lower = c(tminMin, tmaxMin, mMin, aMin),
-                 upper =  c(tminMax, tmaxMax, mMax, aMax),
+                 lower = c(tminMin, tmaxMin, aMin),
+                 upper =  c(tminMax, tmaxMax, aMax),
                  control = nls.control(maxiter = 1000))
 summary(fitModel1)
 
-# BriereFunction2 <- function(temp, tmin, m, c) {
-#   return(ifelse(t < tmin | t > 40, 0, c*t*(t-tmin)*(40-t)^(1/m)))
-#   
-# }
-# # Second fit force tmin = 13, tmax = 40 for exploration (Not used further)
+# # Second fit force tmin = 13, tmax = 40 # for exploration (Not used further)
 # fitModel2 <- nlsLM(estimate ~ briere(temperature, tmin, 40, m, a),
 #                  data = mosDataClean,
 #                  start = initialParList[c(1,3:4)],
@@ -179,8 +114,16 @@ summary(fitModel1)
 bestModel <- fitModel1 # choose free model
 
 # Plot best fit model with new data --------------------------------------------
-fitModelData <- data.frame(temperature = seq(5, 45, length = 100),
-  fitvalue = predict(bestModel, list(temperature = seq(5, 45, length = 100))))
+fitModelData <- data.frame(temperature = if (parameter == "mosquito_mortality_rate") {
+        seq(10, 35, length = 100)
+} else {
+        seq(8, 42, length = 100)  
+},
+fitvalue = predict(bestModel, list(temperature = if (parameter == "mosquito_mortality_rate") {
+        seq(10, 35, length = 100)
+} else {
+        seq(8, 42, length = 100)  
+})))
 
 ggplot(data = fitModelData, aes(x=temperature, y = fitvalue)) +
         geom_line(colour = "black") +
@@ -218,17 +161,12 @@ nsamples <- 100
 paramSamples <- tibble(tmin = runif(nsamples, min = lower95["tmin"], 
   max = upper95["tmin"]),
   tmax = runif(nsamples, min = lower95["tmax"], max = upper95["tmax"]),
-  a = runif(nsamples, min = lower95["a"], max = upper95["a"]),
-  m = runif(nsamples, min = lower95["m"], max = upper95["m"])) 
-
-# a has to be > 0 so reset values of a < 0 to 0
-paramSamples <- paramSamples %>%
-  mutate(a = ifelse(a < 0, 0, a))
+  a = runif(nsamples, min = lower95["a"], max = upper95["a"])) 
 
 for (ii in 1:nsamples) {
   sample <- paramSamples[ii,]
-  newFitValue <- briere(fitModelData$temperature, 
-    sample$tmin, sample$tmax, sample$m, sample$a)
+  newFitValue <- inverted_quadratic(fitModelData$temperature, 
+    sample$a, sample$tmin, sample$tmax)
   
   fitModelData[[paste0("sample", ii)]] <- newFitValue
   
@@ -240,7 +178,7 @@ ggplot(data = gather(fitModelData, "sample", "value", 2:ncol(fitModelData)),
   geom_line() + 
   # geom_point(data = mosDataClean, aes(x = temperature, y = estimate), 
   #   colour = "blue") +
-  coord_cartesian(ylim = c(0, 1)) +
+  coord_cartesian(ylim = c(0, 0.8)) +
   labs(x = "Temperature", y = paste(parameter)) +
   PlotOptions()
 }
@@ -255,11 +193,11 @@ Now try to generate uncertainty using a bootstrap.
 
 Fit_on_bootstrap <- function(split) {
   
-  modelFitSplit <- tryCatch(nlsLM(estimate ~ briere(temperature, tmin, tmax, m, a), 
+  modelFitSplit <- tryCatch(nlsLM(estimate ~ inverted_quadratic(temperature, a, tmin, tmax), 
     data = analysis(split), 
     start = initialParList,
-    lower = c(tminMin, tmaxMin, mMin, aMin),
-    upper = c(tmaxMax, tmaxMax, mMax, aMax), 
+    lower = c(aMin, tminMin, tmaxMin),
+    upper = c(aMax, tmaxMax, tmaxMax), 
     control = nls.control(maxiter = 1000, 
       warnOnly = TRUE, scaleOffset = 1,
       minFactor = 1/4096)), 
@@ -279,13 +217,13 @@ Fit_on_bootstrap <- function(split) {
 ```{r Bootstrap estimates}
 
 # Set up bootstraps
-bootSeed <- sample(1000:3000, 1)
-# bootSeed <- 2226
+# bootSeed <- sample(1000:3000, 1)
+bootSeed <- 2226
 set.seed(bootSeed)
 
 # Will not always get good fits so do enough boots so that numSets can be 
 # obtained as a lookup table
-numBoots <- 25000
+numBoots <- 15000
 numSets <- 10000
 
 boots <- bootstraps(mosDataClean, times = numBoots, apparent = TRUE)
@@ -295,19 +233,26 @@ boot_models <- boots %>%
         mutate(model = map(splits, Fit_on_bootstrap),
                coef_info = map(model, tidy),
                predictions = map(model, augment))
-
+###
+###
+###
 params_boot <- boot_models %>% 
         unnest(coef_info) %>% 
         select(id, term, estimate) %>%
-        spread(term, estimate) %>%
-        # remove problematic bootstrap fits
-        filter(is.na(`(Intercept)`), is.na(temperature), a > aMin, m > mMin,
-              tmax > tmaxMin, tmax < tmaxMax,
-              tmin > tminMin, tmin < tminMax) %>%
-        select(-`(Intercept)`, -temperature)
+        spread(term, estimate)
+
+# params_boot <- boot_models %>% 
+#         unnest(coef_info) %>% 
+#         select(id, term, estimate) %>%
+#         spread(term, estimate) %>%
+#         # remove problematic bootstrap fits
+#         filter(is.na(`(Intercept)`), is.na(temperature), a > aMin,
+#               tmax > tmaxMin, tmax < tmaxMax,
+#               tmin > tminMin, tmin < tminMax) %>%
+#         select(-`(Intercept)`, -temperature)
 
 # Print out percentage of bootstraps that had problematic fits for checking
-100*(numBoots - nrow(params_boot))/numBoots
+# 100*(numBoots - nrow(params_boot))/numBoots
 
 # Calculate parameter statistics
 params_stats <- params_boot %>% 
@@ -333,13 +278,17 @@ params_table <- params_boot %>%
   arrange(id)
 
 # Filter out problematic bootstrap models
-boot_models <- boot_models %>% filter(id %in% params_boot$id)
+# boot_models <- boot_models %>% filter(id %in% params_boot$id)
 
 ```
 
 ```{r Plot bootstrap fits}
 # New data for smoothing 
-new_preds <- tibble(temperature = seq(5, 45,  length.out = 250))
+new_preds <- tibble(temperature = if (parameter == "mosquito_mortality_rate") {
+        seq(10, 35, length = 250)
+} else {
+        seq(9, 41, length = 250)  
+})
 
 preds <- augment(bestModel, newdata = new_preds, 
                  type.predict = "response")
@@ -386,8 +335,50 @@ bootstrapPlot <- ggplot() +
 
 bootstrapPlot
 
-```
+load(file.path(outputFolder, paste0(parameter, "_fits.Rda")))
 
+if (parameter == "mosquito_mortality_rate") {
+        mosquito <- bootstrapPlot + 
+                labs(title = "Mosquito mortality rate", x = 'Temperature (C)', y = expression(paste("Rate ", (day^-1)))) +
+                 geom_vline(xintercept = c(27.7), linetype = 1)+
+        geom_vline(xintercept = c(28.5), linetype = 2, color = "#F8766D")+
+        geom_vline(xintercept = c(29.0), linetype = 6, color = "#7CAE00")+
+        geom_vline(xintercept = c(29.7), linetype = 4, color = "#00BFC4")+
+        geom_vline(xintercept = c(31.8), linetype = 5, color = "#C77CFF")+
+                theme(legend.position = "none")
+} else if (parameter == "pupa_mortality_rate") {
+        pupa <- bootstrapPlot + 
+                labs(title = "Pupae mortality rate", x = 'Temperature (C)', y = expression(paste("Rate ", (day^-1)))) +
+                 geom_vline(xintercept = c(27.7), linetype = 1)+
+        geom_vline(xintercept = c(28.5), linetype = 2, color = "#F8766D")+
+        geom_vline(xintercept = c(29.0), linetype = 6, color = "#7CAE00")+
+        geom_vline(xintercept = c(29.7), linetype = 4, color = "#00BFC4")+
+        geom_vline(xintercept = c(31.8), linetype = 5, color = "#C77CFF")+
+                theme(legend.position = "none")
+} else if (parameter == "larva_mortality_rate"){
+        larva <- bootstrapPlot + 
+                labs(title = "Larvae mortality rate", x = 'Temperature (C)', y = expression(paste("Rate ", (day^-1)))) +
+                geom_vline(xintercept = c(27.7), linetype = 1)+
+        geom_vline(xintercept = c(28.5), linetype = 2, color = "#F8766D")+
+        geom_vline(xintercept = c(29.0), linetype = 6, color = "#7CAE00")+
+        geom_vline(xintercept = c(29.7), linetype = 4, color = "#00BFC4")+
+        geom_vline(xintercept = c(31.8), linetype = 5, color = "#C77CFF")+
+                theme(legend.position = "none")
+}
+
+legend <- cowplot::get_legend(larva +
+                                      guides(color = guide_legend(nrow = 1)) +
+                                      theme(legend.position = "bottom"))
+
+mortality <- cowplot::plot_grid(larva, pupa, mosquito, ncol = 3, labels = c('A', 'B', 'C'),
+                              hjust = -2, label_size=14)
+mortality1 <- cowplot::plot_grid(legend, mortality, ncol=1, rel_heights = c(.1, 1))
+
+ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "mortality1.png"),
+       mortality1 , width = 35, height = 10, units = "cm")
+
+
+```
 
 ```{r Save the outputs}
 save(bootSeed, bestFitStats, params_boot, params_stats, params_table, boot_models, 
@@ -399,57 +390,3 @@ write_csv(params_table, file = file.path(outputFolder, paste0(parameter, "_sets.
 
 write_csv(params_stats, file = file.path(outputFolder, paste0(parameter, "_statistics.csv")))
 ```
-
-```{r}
-
-# Figure for paper/chapter 2
-load(file.path(outputFolder, paste0(parameter, "_fits.Rda")))
-
-
-a <- bootstrapPlot + 
-        labs(title = "Biting rate", x = 'Temperature (C)', y = expression(paste("Rate ", (day^-1)))) + 
-        theme(legend.position = "none")
-
-b <- bootstrapPlot +  
-        geom_point(highlight, mapping = aes(temperature, estimate))+
-        labs(title = "Infection probability", x = 'Temperature (C)', y = "Probability") + 
-        theme(legend.position = "none")
-
-c <- bootstrapPlot +  
-        labs(title = "Oviposition rate", x = 'Temperature (C)', y = expression(paste("Rate ", (day^-1)))) + 
-        theme(legend.position = "none")
-
-d <- bootstrapPlot +  
-         # geom_point(highlight, mapping = aes(temperature, estimate))+
-        labs(title = "Pupa transition rate", x = 'Temperature (C)', y = expression(paste("Rate ", (day^-1)))) + 
-        theme(legend.position = "none")
-
-e <- bootstrapPlot +  
-        geom_point(highlight, mapping = aes(temperature, estimate))+
-        labs(title = "Transmission probability", x = 'Temperature (C)', y = 'Probability') + 
-        theme(legend.position = "none")
-
-f <- bootstrapPlot +  
-        geom_point(highlight, mapping = aes(temperature, estimate))+
-        labs(title = "Extrinsic incubation rate", x = 'Temperature (C)', y = expression(paste("Rate ", (day^-1)))) + 
-        theme(legend.position = "none")
-
-g <- bootstrapPlot + 
-         geom_point(highlight, mapping = aes(temperature, estimate))+
-        labs(title = "Larva maturation rate", x = 'Temperature (C)', y = expression(paste("Rate ", (day^-1)))) + 
-        theme(legend.position = "none")
-
-legend <- cowplot::get_legend(a + guides(color = guide_legend(nrow = 1)) + 
-                                      theme(legend.position = "bottom"))
-
-plot <- cowplot::plot_grid(a, b, c, d, e, f, g, ncol=3,
-                           labels = c('A', 'B', 'C', 'D', 'E', 'F', 'G'),
-                              hjust = -2, label_size=14) 
-plot1 <- cowplot::plot_grid(legend, plot, ncol=1, rel_heights = c(.1, 1))
-
-ggsave(file.path(outputFolder, "brierie_fit_plot_15May2023.png"),
-  plot1 , width = 35, height = 20, units = "cm")
-
-
-```
-

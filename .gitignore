@@ -1,0 +1,16 @@
+5-sim_summary.Rmd
+6-chapter3_analysis.Rmd
+
+.Rhistory
+*/.Rhistory
+*/*.Rdata
+
+# Folders that can be ignored
+archive/
+articles/
+data/
+docs/
+misc/
+outputs/
+results/
+templates/

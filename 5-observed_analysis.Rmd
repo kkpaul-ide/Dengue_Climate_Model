@@ -1,4 +1,7 @@
+# Simulate dengue model - Analysis of model output for 1995-2014
+# ==============================================================
 
+This Rmarkdown script is used to analyse model output for the period 1995-2014.
 
 ```{r sim summary}
 

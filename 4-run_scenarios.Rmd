@@ -1,5 +1,7 @@
-# Run different scenarios
+# Simulate dengue model - Run scenarios
+# ======================================
 
+This Rmarkdown script is used to run simulations of a specific dengue model for available scenarios. 
 
 ```{r Setup, echo=FALSE}
 # Restart R and set working directory to source file; i.e. rm(list=ls()) 

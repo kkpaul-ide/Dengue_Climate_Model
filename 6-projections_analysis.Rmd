@@ -1,3 +1,8 @@
+# Simulate dengue model - Analysis of model output for 2030-2049 and 2080-2099
+# ============================================================================
+
+This Rmarkdown script is used to analyse model output for 2030-2049 and 2080-2099.
+
 ```{r , echo=FALSE}
 # Restart R and set working directory to source file; i.e. rm(list=ls()) 
 

@@ -3,8 +3,11 @@
 ```{r sim summary}
 
 require(tidyverse, quietly = TRUE)
-require(LeftysRpkg)
+require(lubridate)
 require(cowplot)
+
+source("code/PlotOptions.R")
+
 # folder in which simulations are saved
 
 basePath <- getwd()
@@ -148,8 +151,8 @@ observed_data <- plot_grid(monthlyDiagnosesPlot, seasonalDiagnosis,
 
 observed_data
 
-ggsave(file.path(projectFolder, "Paper figure", "observed_data.png"),
-       observed_data , width = 35, height = 15, units = "cm")
+# ggsave(file.path(projectFolder, "Paper figure", "observed_data.png"),
+#        observed_data , width = 35, height = 15, units = "cm")
 #####
 
 monthlyInfectionsPlot <- ggplot(monthInfectionsDf %>% 
@@ -305,91 +308,8 @@ obs_uncertainity <- plot_grid(p1, p2, align = "v", ncol = 1)
 obs_uncertainity
 
 ## important chapter 2 result figure
-ggsave(file.path(projectFolder, "Paper figure", "obs_uncertainity.png"),
-       obs_uncertainity , width = 35, height = 20, units = "cm")
+# ggsave(file.path(projectFolder, "Paper figure", "obs_uncertainity.png"),
+#        obs_uncertainity , width = 35, height = 20, units = "cm")
 
 ```
 
-```{r Produce plots, echo=FALSE}
-
-source(file.path(basepath, "code", "PlotOptions.R"))
-
-## Compare ISIMIP data over three periods -------------------------------------------------------
-load(file.path(basePath, "data", "climateData_station.RData"))
-
-# Filter data for first period
-climateData1 <- clim.station.df %>%
-        filter(station == pg$location, date >= "1995-01-01", date <= "2014-12-31")
-
-# Filter data for second period
-climateData2 <- clim.station.df %>%
-  filter(station == pg$location, date >= "2030-01-01", date <= "2049-12-31")
-
-# Filter data for third period
-climateData3 <- clim.station.df %>%
-  filter(station == pg$location, date >= "2080-01-01", date <= "2099-12-31")
-
-# Function to plot average monthly value of climate variables
-
-monthPlot <- function(Clim, var, dateRange, scenario = "RCP 8.5",  fun = "mean", xvar = "month", y_lim = c(15, 40)) {
-        
-        dat <- Clim %>%
-                filter(rcp == scenario) %>%
-                mutate(year = year(date), month = month(date)) %>% 
-                group_by(across(c(gcm, month))) %>%
-                summarise(across(var, ~ get(fun)(.))) %>% 
-                ungroup
-        
-        ggplot(dat, aes_string(xvar, var)) +
-                geom_line(aes(color = gcm))+
-                coord_cartesian(ylim = y_lim)+
-                scale_x_continuous(breaks = round(seq(1,12, by = 1),1),
-                                   labels = c("J","F","M","A","M","J","J","A","S","O","N","D"))+
-                scale_y_continuous(breaks=seq(15,40,by=5))+
-                labs(x = "", 
-                     y = paste("Monthly", var),
-                     title = paste(dateRange))+
-                
-                PlotOptions()+
-                theme(legend.position = "none")
-} 
-
-# Plot data for first period
-max1 <- monthPlot(climateData1, "maxTemp", "1995-2014", y_lim = c(24, 40))
-mean1 <- monthPlot(climateData1, "meanTemp", "1995-2014", y_lim = c(19, 35))
-min1 <- monthPlot(climateData1, "minTemp", "1995-2014", y_lim = c(13, 31))
-
-# Plot data for second period
-max2 <- monthPlot(climateData2, "maxTemp", "2030-2049", y_lim = c(24, 40))
-mean2 <- monthPlot(climateData2, "meanTemp", "2030-2049", y_lim = c(19, 35))
-min2 <- monthPlot(climateData2, "minTemp", "2030-2049", y_lim = c(13, 31))
-
-
-# Plot data for third period
-max3 <- monthPlot(climateData3, "maxTemp", "2080-2099", y_lim = c(24, 40))
-mean3 <- monthPlot(climateData3, "meanTemp", "2080-2099", y_lim = c(19, 35))
-min3 <- monthPlot(climateData3, "minTemp", "2080-2099", y_lim = c(13, 31))
-
-temperature <- cowplot::plot_grid(min1, min2, min3, ncol = 3)
-
-legend <- cowplot::get_legend(max1 +
-    guides(color = guide_legend(nrow = 1)) +
-    theme(legend.position = "bottom")
-)
-
-temperature <- cowplot::plot_grid(max1, max2, max3, mean1, mean2, mean3, min1, min2, min3, ncol = 3)
-cowplot::plot_grid(temperature, legend,ncol=1,rel_heights = c(1, .1))
-
-
-pr1 <- monthPlot(climateData1, "prec", "1995-2014")
-pr2 <- monthPlot(climateData2, "prec", "2030-2049")
-pr3 <- monthPlot(climateData3, "prec", "2080-2099")
-
-hum1 <- monthPlot(climateData1, "SVPD", "1995-2014")
-hum2 <- monthPlot(climateData2, "SVPD", "2030-2049")
-hum3 <- monthPlot(climateData3, "SVPD", "2080-2099")
-
-prec_hum <- cowplot::plot_grid(pr1, pr2, pr3, hum1, hum2, hum3, ncol = 3)
-
-
-```

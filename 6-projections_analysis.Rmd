@@ -3,8 +3,9 @@
 
 # Packages ----------------------------------------------------------------
 require(tidyverse)
-require(LeftysRpkg)
+# require(LeftysRpkg)
 require(cowplot)
+require(reshape2)
 
 
 basePath <- getwd()
@@ -15,6 +16,7 @@ projectFolder <- file.path(outputsPath, project)
 # source plotting functions
 source("code/plotting_functions.R")
 source("code/functions.R")
+source("code/PlotOptions.R")
 ```
 
 ```{r figures using plotting functions, echo=FALSE}
@@ -25,9 +27,9 @@ seroprevalence2 <- "high_baseline_seroprev"
 
 low_MonthInf <- plot_MonInf(seroprevalence1)
 high_MonthInf <- plot_MonInf(seroprevalence2) 
-
-ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "seasonality_high_base_seroprev_v3.png"),
-       high_Seasonality , width = 35, height = 20, units = "cm")
+# 
+# ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "seasonality_high_base_seroprev_v3.png"),
+#        high_Seasonality , width = 35, height = 20, units = "cm")
 
 #### Plot seroprevalence
 
@@ -272,8 +274,8 @@ plot <- ggplot(dataframe) +
               panel.background = element_blank(),
               axis.line = element_line(colour = "black"))
 
-ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "Briere function plot_v5.png"),
-       plot , width = 35, height = 40, units = "cm")        
+# ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "Briere function plot_v5.png"),
+#        plot , width = 35, height = 40, units = "cm")        
         
 
 ```
@@ -507,12 +509,12 @@ plot_hum_effect <- ggplot(mos_mortality %>% filter(temp == 25), aes(x = svpd, y 
 
 plot_hum_effect
 
-ggsave(file.path(basePath, "docs", "Chapter 2", "Figures", "mosq_mortality_svpd.png"),
-       plot_hum_effect , width = 15, height = 10, units = "cm") 
+# ggsave(file.path(basePath, "docs", "Chapter 2", "Figures", "mosq_mortality_svpd.png"),
+#        plot_hum_effect , width = 15, height = 10, units = "cm") 
 
 ```
 
-```{r}
+```{r compare GCM output with observed climate data}
 ## Compare ISIMIP data over three periods -------------------------------------------------------
 
 load(file.path(basePath, "data", "climateData_station.RData"))
@@ -575,7 +577,7 @@ ggplot() +
 ```
 
 
-```{r}
+```{r prepare model output validation plots}
 ## ISIMIP-based vs observed data-based model results over 1995-2014---------------------------------------
 
 baseline_period <- "1995_2014"
@@ -584,8 +586,8 @@ validation_plot <- validation_plot_MonInf(baseline_period)
 
 validation_plot_prevalence_seasinality <- validation_plot_sero_season(baseline_period)
 
-ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "validation_plot_prevalence_seasonality_4.png"),
-       validation_plot_prevalence_seasinality , width = 35, height = 12, units = "cm")
+# ggsave(file.path(basePath, "docs", "Chapter 3", "Figure", "validation_plot_prevalence_seasonality_4.png"),
+#        validation_plot_prevalence_seasinality , width = 35, height = 12, units = "cm")
 
 ```
 

@@ -1,0 +1,635 @@
+
+
+```{r sim summary}
+
+require(tidyverse, quietly = TRUE)
+require(LeftysRpkg)
+require(cowplot)
+# folder in which simulations are saved
+
+basePath <- getwd()
+outputsPath <- file.path(basePath, "outputs")
+project <- "base"
+projectFolder <- file.path(outputsPath, project)
+
+load(file.path(projectFolder, "Model_inputs_calibrated.Rda"))
+
+saveSims <- FALSE
+
+period <- "1995_2014" # "2080_2099", "1995_2014"
+RCP <-  "Observed"# "RCP 4.5", "RCP 8.5"
+baseline_sero <- "low_baseline_seroprev" # "high_baseline_seroprev"
+
+
+if (period == "1995_2014") {
+        simFolder <- file.path(projectFolder, "savedsims", paste0(period))
+} else {
+        simFolder <- file.path(projectFolder, "savedsims", paste0(period), paste0(RCP)
+                               #, paste0(baseline_sero)
+                               )
+}
+
+Dat <- list()
+
+for (ii in 1:1000) {
+  print(ii)
+        for (jj in pg$gcms) {
+                tempScenario <- ifelse(jj == "Observed", "Observed", paste0(RCP))
+                for(kk in tempScenario) {
+                        load(file.path(simFolder, paste0(ii, "_", jj, "_", kk, ".Rda")))
+                        name <- paste(ii,jj,kk)
+                        Dat[[name]] <- adjustedDat
+                }
+        }
+}
+
+# Convert lists into date frames - will get a warning but no issue 
+datDf <- unnest(enframe(map(Dat, "dat"))) %>%
+        rename("model" = name) %>%
+        select("model", "newInfections", "newInfections1", "newInfections2",  
+               "date", "month", "year", "Nh", "Nv", "seroPrev", "days")
+
+annInfectionsDf <- unnest(enframe(map(Dat, "annInfections"))) %>%
+  rename("model" = name)
+
+monthInfectionsDf <- unnest(enframe(map(Dat, "monthInfections"))) %>%
+  rename("model" = name)
+
+seroprevDf <- unnest(enframe(map(Dat, "seroprev"))) %>%
+  rename("model" = name)
+
+# save sim summary
+if (saveSims){
+  save(datDf, annInfectionsDf, monthInfectionsDf, seroprevDf, 
+       file = file.path(simFolder, "sim_summary.Rda"))
+} else {
+  load(file.path(simFolder,"sim_summary.Rda"))
+}
+
+# Create Model and Set variable from combined model variable
+datDf[c('Sim', 'GCM', 'RCP')] <- str_split_fixed(datDf$model, ' ', 3)
+
+annInfectionsDf[c('Sim', 'GCM', 'RCP')] <- str_split_fixed(annInfectionsDf$model, ' ', 3)
+
+monthInfectionsDf[c('Sim', 'GCM', 'RCP')] <- str_split_fixed(monthInfectionsDf$model, ' ', 3)
+
+seroprevDf[c('Sim', 'GCM', 'RCP')] <- str_split_fixed(seroprevDf$model, ' ', 3)
+
+# seroprevHist <- ggplot(seroprevDf, aes(x=value))+
+#   geom_histogram(bins = 100)+
+#   xlab("Seroprevalence (%)") + ylab("Frequency") +
+#   facet_wrap(~GCM)+
+#   PlotOptions()
+# 
+# seroprevHist
+
+# Plot specifications
+yearPoints <- c(0.5,4.5,8.5,12.5,16.5,19.5)
+
+if (period == "2080_2099") {
+        yearLabels <- c("2080", "2084", "2088", "2092", "2096", "2099")
+} else if (period == "2030_2049"){
+        yearLabels <- c("2030", "2034", "2038", "2042", "2046", "2049")   
+} else {
+        yearLabels <- c("1995", "1999", "2003", "2007", "2011", "2014") 
+}
+
+ptsPlots <- yearPoints*365
+
+#### Reported dengue data
+monthlyDiagnoses <- read.csv(file.path(getwd(), "data", "Monthly_dengue_cases_2000-2019.csv")) %>%
+  mutate(time = Year + Month/12)
+
+monthlyDiagnosesPlot <- ggplot(monthlyDiagnoses, aes(x = Year+Month/12)) +
+        geom_line(aes(y = Den_cases), colour="blue") +
+        xlab("") + ylab("Dengue cases") + 
+        
+        coord_cartesian(xlim = c(1995, 2014), 
+                        ylim = quantile(monthlyDiagnoses$Den_cases, c(0.1, 0.983))) +
+        scale_x_continuous(breaks = c(1995.5, 1999.5, 2003.5, 2007.5, 2011.5, 2014.5), 
+                           labels = yearLabels)+
+        theme(text = element_text(face = "bold",size=18,colour="black"),
+              panel.background = element_blank(),
+              axis.line = element_line(colour = "black"))
+
+monthlyDiagnosesPlot
+
+seasonalDiagnosis <- ggplot(monthlyDiagnoses %>%
+                                    group_by(Month) %>%
+                                    summarise(lwr_IQR = quantile(Den_cases, 0.25, na.rm = TRUE),
+                                              medInf = median(Den_cases),
+                                              upr_IQR = quantile(Den_cases, 0.75, na.rm = TRUE))) +
+        geom_line(aes(Month, medInf, color = "Median"))+
+        geom_point(aes(Month, medInf))+
+        geom_ribbon(aes(x = Month, ymin = lwr_IQR, ymax = upr_IQR,  fill = "iqr",  alpha = "iqr"))+
+        xlab("") + ylab("Monthly diagnosis")+
+        scale_x_continuous(breaks = round(seq(min(monthlyDiagnoses$Month),
+                                              max(monthlyDiagnoses$Month), by = 1),1),
+                           labels = c("J","F","M","A","M","J","J","A","S","O","N","D"))+
+        scale_colour_manual(NULL, values = "blue",
+                            limits = "Median") +
+        scale_alpha_manual(NULL, values = 0.4,
+                           limits = "iqr",
+                           labels = "Interquartile range") +
+        scale_fill_manual(NULL, values = "black",
+                          limits = "iqr",
+                          labels = "Interquartile range") +
+        theme(text = element_text(face = "bold",size=18,colour="black"),
+              panel.background = element_blank(),
+              axis.line = element_line(colour = "black"),
+              legend.text=element_text(face = "bold",size=18),
+              legend.position = "top")
+
+seasonalDiagnosis
+
+observed_data <- plot_grid(monthlyDiagnosesPlot, seasonalDiagnosis, 
+                              labels = c('A', 'B'),
+                              hjust = -0.8, vjust = 2, label_size=14)
+
+observed_data
+
+ggsave(file.path(projectFolder, "Paper figure", "observed_data.png"),
+       observed_data , width = 35, height = 15, units = "cm")
+#####
+
+monthlyInfectionsPlot <- ggplot(monthInfectionsDf %>% 
+                          group_by(year, month, GCM) %>% 
+                          summarise(lwr_IQR = quantile(infections, 0.25, na.rm = TRUE),
+                                    medNewInf = median(infections),
+                                    upr_IQR = quantile(infections, 0.75, na.rm = TRUE))) +
+        geom_line(mapping = aes(x=year+month/12, y=medNewInf, group = GCM, color = "Median"))+
+        geom_ribbon(mapping = aes(x = year+month/12, ymin = lwr_IQR, ymax = upr_IQR,  fill = "iqr",  alpha = "iqr"))+
+        xlab("") + ylab("Dengue infections") +
+        scale_x_continuous(breaks = c(1995.5, 1999.5, 2003.5, 2007.5, 2011.5, 2014.5), 
+                           labels = yearLabels) +
+        scale_colour_manual(NULL, values = "blue",
+                            limits = "Median") +
+        scale_alpha_manual(NULL, values = 0.4,
+                           limits = "iqr",
+                           labels = "Interquartile Range") +
+        scale_fill_manual(NULL, values = "black",
+                          limits = "iqr",
+                          labels = "Interquartile Range") +
+        theme(text = element_text(face = "bold",size=18,colour="black"),
+              panel.background = element_blank(),
+              axis.line = element_line(colour = "black"),
+              legend.text=element_text(face = "bold",size=18),
+              legend.position = c(0.6, 0.7))  
+monthlyInfectionsPlot
+
+dailyInfectionsPlot <- ggplot(datDf %>%
+                                      group_by(days, GCM) %>%
+                                      summarise(lwr_IQR = quantile(newInfections, 0.25, na.rm = TRUE),
+                                                medNewInf = median(newInfections),
+                                                upr_IQR = quantile(newInfections, 0.75, na.rm = TRUE))) +
+        geom_line(aes(x=days,y=medNewInf, group = GCM, color = "Median"))+
+        geom_ribbon(aes(x = days, ymin = lwr_IQR, ymax = upr_IQR,  fill = "iqr",  alpha = "iqr"))+
+        xlab("") + ylab("Daily dengue infections") +
+        scale_x_continuous(breaks = ptsPlots, 
+                           labels = yearLabels) +
+        scale_colour_manual(NULL, values = "blue",
+                            limits = "Median") +
+        scale_alpha_manual(NULL, values = 0.4,
+                           limits = "iqr",
+                           labels = "Interquartile Range") +
+        scale_fill_manual(NULL, values = "black",
+                          limits = "iqr",
+                          labels = "Interquartile Range") +
+        coord_cartesian(xlim = c(1, ptsPlots[6]))+
+        theme(text = element_text(face = "bold",size=14,colour="black"),
+              panel.background = element_blank(),
+              axis.line = element_line(colour = "black"),
+              legend.position = c(0.6, 0.7))
+
+dailyInfectionsPlot
+
+seroPrevPlot <- ggplot(datDf %>%
+                               group_by(days, GCM) %>%
+                               summarise(lwr_IQR = quantile(seroPrev, 0.25, na.rm = TRUE),
+                                         medseroPrev = median(seroPrev),
+                                         upr_IQR = quantile(seroPrev, 0.975, na.rm = TRUE))) +
+        geom_line(aes(x=days,y=medseroPrev, group = GCM, color = "Median Seroprevalence"))+
+        geom_ribbon(aes(x = days, ymin = lwr_IQR, ymax = upr_IQR, fill = "iqr",  alpha = "iqr"))+
+        geom_segment(aes(x = ptsPlots[6], y = 36, xend = ptsPlots[6], yend = 85), color = "red")+
+        xlab("") + ylab("Seroprevalence (%)")+
+        scale_x_continuous(breaks = ptsPlots, 
+                           labels = yearLabels) +
+        scale_colour_manual(NULL, values = "blue",
+                            limits = "Median Seroprevalence") +
+        scale_alpha_manual(NULL, values = 0.4,
+                           limits = "iqr",
+                           labels = "Interquartile Range") +
+        scale_fill_manual(NULL, values = "black",
+                          limits = "iqr",
+                          labels = "Interquartile Range") +
+        coord_cartesian(xlim = c(1, ptsPlots[6]))+
+        theme(text = element_text(face = "bold",size=18,colour="black"),
+              panel.background = element_blank(),
+              axis.line = element_line(colour = "black"),
+              legend.position = "none")
+
+seroPrevPlot
+
+annInfectionPlot <- ggplot(annInfectionsDf, aes(x = GCM, y = infections)) +
+        geom_boxplot(outlier.shape = NA)+
+        scale_y_continuous(limits = quantile(annInfectionsDf$infections, c(0.1, 0.9)))+
+        xlab("") + ylab("Total annual infections") +
+        theme(text = element_text(face = "bold",size=18,colour="black"),
+              panel.background = element_blank(),
+              axis.line = element_line(colour = "black"),
+              axis.title.x=element_blank(),
+              axis.text.x=element_blank(),
+              axis.ticks.x=element_blank())
+
+annInfectionPlot
+
+###
+#boxplot statistics
+bp <- boxplot(annual_peak$x)
+outliers <- bp$out
+num_outliers <- length(outliers)
+max_value <- range(annual_peak$x, na.rm = TRUE)[2]
+cat("Number of outliers:", num_outliers, "\n")
+cat("Maximum value:", max_value)
+
+###
+annual_peak <- aggregate(datDf$newInfections, list(datDf$year,datDf$Sim, datDf$GCM), FUN=max)
+
+PeakInfectionPlot <- ggplot(annual_peak, aes(x = Group.3, y = x)) +
+        geom_boxplot(outlier.shape = NA)+
+        scale_y_continuous(limits = quantile(annual_peak$x, c(0.1, 0.9)))+
+        xlab("") + ylab("Annual peak size") +
+        theme(text = element_text(face = "bold",size=18,colour="black"),
+              panel.background = element_blank(),
+              axis.line = element_line(colour = "black"),
+              axis.title.x=element_blank(),
+              axis.text.x=element_blank(),
+              axis.ticks.x=element_blank())
+
+PeakInfectionPlot
+        
+seasonalPlot <- ggplot(monthInfectionsDf %>%
+                               group_by(month, GCM) %>%
+                               summarise(lwr_IQR = quantile(infections, 0.25, na.rm = TRUE),
+                                         medInf = median(infections),
+                                         upr_IQR = quantile(infections, 0.75, na.rm = TRUE))) +
+        geom_line(aes(month, medInf, group = GCM, color = "Median monthly infections"))+
+        geom_point(aes(month, medInf))+
+        geom_ribbon(aes(x = month, ymin = lwr_IQR, ymax = upr_IQR,  fill = "iqr",  alpha = "iqr"))+
+        xlab("") + ylab("Monthly infections")+
+        scale_x_continuous(breaks = round(seq(min(monthInfectionsDf$month),
+                                              max(monthInfectionsDf$month), by = 1),1),
+                           labels = c("J","F","M","A","M","J","J","A","S","O","N","D"))+
+        scale_colour_manual(NULL, values = "blue",
+                            limits = "Median monthly infections") +
+        scale_alpha_manual(NULL, values = 0.4,
+                           limits = "iqr",
+                           labels = "IQR") +
+        scale_fill_manual(NULL, values = "black",
+                          limits = "iqr",
+                          labels = "IQR") +
+        theme(text = element_text(face = "bold",size=18,colour="black"),
+              panel.background = element_blank(),
+              axis.line = element_line(colour = "black"),
+              legend.position = "none")
+
+seasonalPlot
+
+p1 <- plot_grid(monthlyInfectionsPlot, seroPrevPlot, labels = c('A', 'B'), 
+                rel_widths = c(1, 1/2), hjust = -7, label_size=18, align = "h" )
+p2 <- plot_grid(annInfectionPlot, PeakInfectionPlot, seasonalPlot,  
+                labels = c('C', 'D', 'E'), hjust = -7, label_size=18, nrow = 1)
+
+obs_uncertainity <- plot_grid(p1, p2, align = "v", ncol = 1)
+
+# obs_uncertainity <- plot_grid(monthlyInfectionsPlot, seroPrevPlot, annInfectionPlot, 
+#                               PeakInfectionPlot, seasonalPlot, 
+#                               labels = c('A', 'B', 'C', 'D', 'E'),
+#                               rel_widths = c(1, 1/2,1/2,1/2,1/2),
+#                               hjust = -7, label_size=14, align = "h", nrow = 2)
+
+obs_uncertainity
+
+## important chapter 2 result figure
+ggsave(file.path(projectFolder, "Paper figure", "obs_uncertainity.png"),
+       obs_uncertainity , width = 35, height = 20, units = "cm")
+
+##median and IQR
+quantile((annInfectionsDf %>% 
+        group_by(model) %>% 
+        summarise(annual_sum = sum(infections)))$annual_sum, 0.75)
+
+
+# PPC - proportion per capita
+
+# dailyPPCPlot <- ggplot(datDf %>%
+#                                group_by(days, GCM) %>%
+#                                summarise(avgNewInf = mean(newInfections, na.rm = TRUE), pop = mean(Nh, na.rm = TRUE)) %>% 
+#                                mutate(ppc = avgNewInf*1000000/pop)) +
+#         geom_line(aes(x=days,y=ppc))+
+#         xlab("") + ylab("Daily infections/million Pop") +
+#         scale_x_continuous(breaks = ptsPlots, 
+#                            labels = yearLabels) +
+#         coord_cartesian(xlim = c(1, ptsPlots[6]))+
+#         # coord_cartesian(ylim = c(1, 6000))+
+#         facet_wrap(~GCM)+
+#         PlotOptions()+
+#         theme(text=element_text(size=25))
+# 
+# dailyPPCPlot
+# 
+# monthInfectionsPlot <- ggplot(monthInfectionsDf %>%
+#                group_by(year, month, GCM) %>%
+#                summarise(avgInf = mean(infections, na.rm = TRUE))) +
+#         geom_line(aes(x=year+month/12,y=avgInf))+
+#         xlab("") + ylab("Average monthly dengue infections") +
+#         facet_wrap(~GCM)+
+#         PlotOptions()
+# 
+# monthInfectionsPlot
+
+
+
+avgSeasonalPlot <- ggplot(monthInfectionsDf %>%
+                               group_by(month, GCM) %>%
+                               summarise(avgInf = mean(infections))) +
+        geom_line(aes(month, avgInf))+
+        geom_point(aes(month, avgInf))+
+        xlab("") + ylab("Monthly Infections")+
+        scale_x_continuous(breaks = round(seq(min(monthInfectionsDf$month),
+                                              max(monthInfectionsDf$month), by = 1),1),
+                           labels = c("J","F","M","A","M","J","J","A","S","O","N","D"))+
+        facet_wrap(~GCM)+
+        PlotOptions()+
+        theme(legend.title = element_blank())
+
+avgSeasonalPlot
+
+# ggsave(file.path(projectFolder, "results", "seroprevGCMsims.png"),
+#   seroprevHist , width = 35, height = 20, units = "cm")
+
+
+mean(seroprevDf[seroprevDf$value > 5,]$value)
+median(seroprevDf[seroprevDf$value > 5,]$value)
+IQR(seroprevDf[seroprevDf$value > 5,]$value)
+
+
+median(seroprevDf[seroprevDf$value > 25,]$value)
+
+IQR(seroprevDf[seroprevDf$value > 25,]$value)
+
+simIndex <- seroprevDf[seroprevDf$value > 36 & seroprevDf$GCM == "Observed",]$Sim
+
+seroprevDf[seroprevDf$value > 20,]
+
+aggregate(seroprevDf$value, list(seroprevDf$GCM), FUN=quantile)
+
+aggregate(annInfectionsDf[annInfectionsDf$Sim %in% simIndex, ]$infections, list(annInfectionsDf[annInfectionsDf$Sim %in% simIndex, ]$GCM), FUN=summary)
+
+
+test1 <- annInfectionsDf %>% 
+        group_by(model) %>% 
+        mutate(sumAnnInf = sum(infections)) %>% 
+        mutate(annInfProp = infections/sumAnnInf) %>% 
+        mutate(outbreakY = case_when(annInfProp >= 0.05 ~ 1,
+                                     annInfProp <0.05 ~ 0))
+
+
+aggregate(test$outbreakY, list(test$model), FUN=sum)
+
+
+```
+
+```{r Produce plots, echo=FALSE}
+
+## Compare ISIMIP data over three periods -------------------------------------------------------
+load(file.path(basePath, "data", "climateData_station.RData"))
+
+# Filter data for first period
+climateData1 <- clim.station.df %>%
+        filter(station == pg$location, date >= "1995-01-01", date <= "2014-12-31")
+
+# Filter data for second period
+climateData2 <- clim.station.df %>%
+  filter(station == pg$location, date >= "2030-01-01", date <= "2049-12-31")
+
+# Filter data for third period
+climateData3 <- clim.station.df %>%
+  filter(station == pg$location, date >= "2080-01-01", date <= "2099-12-31")
+
+# Function to plot average monthly value of climate variables
+
+monthPlot <- function(Clim, var, dateRange, scenario = "RCP 8.5",  fun = "mean", xvar = "month", y_lim = c(15, 40)) {
+        
+        dat <- Clim %>%
+                filter(rcp == scenario) %>%
+                mutate(year = year(date), month = month(date)) %>% 
+                group_by(across(c(gcm, month))) %>%
+                summarise(across(var, ~ get(fun)(.))) %>% 
+                ungroup
+        
+        ggplot(dat, aes_string(xvar, var)) +
+                geom_line(aes(color = gcm))+
+                coord_cartesian(ylim = y_lim)+
+                scale_x_continuous(breaks = round(seq(1,12, by = 1),1),
+                                   labels = c("J","F","M","A","M","J","J","A","S","O","N","D"))+
+                scale_y_continuous(breaks=seq(15,40,by=5))+
+                labs(x = "", 
+                     y = paste("Monthly", var),
+                     title = paste(dateRange))+
+                
+                PlotOptions()+
+                theme(legend.position = "none")
+} 
+
+# Plot data for first period
+max1 <- monthPlot(climateData1, "maxTemp", "1995-2014", y_lim = c(24, 40))
+mean1 <- monthPlot(climateData1, "meanTemp", "1995-2014", y_lim = c(19, 35))
+min1 <- monthPlot(climateData1, "minTemp", "1995-2014", y_lim = c(13, 31))
+
+# Plot data for second period
+max2 <- monthPlot(climateData2, "maxTemp", "2030-2049", y_lim = c(24, 40))
+mean2 <- monthPlot(climateData2, "meanTemp", "2030-2049", y_lim = c(19, 35))
+min2 <- monthPlot(climateData2, "minTemp", "2030-2049", y_lim = c(13, 31))
+
+
+# Plot data for third period
+max3 <- monthPlot(climateData3, "maxTemp", "2080-2099", y_lim = c(24, 40))
+mean3 <- monthPlot(climateData3, "meanTemp", "2080-2099", y_lim = c(19, 35))
+min3 <- monthPlot(climateData3, "minTemp", "2080-2099", y_lim = c(13, 31))
+
+temperature <- cowplot::plot_grid(min1, min2, min3, ncol = 3)
+
+legend <- cowplot::get_legend(max1 +
+    guides(color = guide_legend(nrow = 1)) +
+    theme(legend.position = "bottom")
+)
+
+temperature <- cowplot::plot_grid(max1, max2, max3, mean1, mean2, mean3, min1, min2, min3, ncol = 3)
+cowplot::plot_grid(temperature, legend,ncol=1,rel_heights = c(1, .1))
+
+
+pr1 <- monthPlot(climateData1, "prec", "1995-2014")
+pr2 <- monthPlot(climateData2, "prec", "2030-2049")
+pr3 <- monthPlot(climateData3, "prec", "2080-2099")
+
+hum1 <- monthPlot(climateData1, "SVPD", "1995-2014")
+hum2 <- monthPlot(climateData2, "SVPD", "2030-2049")
+hum3 <- monthPlot(climateData3, "SVPD", "2080-2099")
+
+prec_hum <- cowplot::plot_grid(pr1, pr2, pr3, hum1, hum2, hum3, ncol = 3)
+
+
+
+## --------------------------------------------------------------------------------------------------
+
+## Contour plot -------------------------------------------------------------------------------------
+
+# Prepare data for contour
+temp <- seq(5,45,by=0.1)
+hum <- seq(0,4, by=0.1)
+rain <- seq(0,120, by = 1)
+
+mos_mortality <- vector("list", length(hum))
+lar_mortality <- vector("list", length(rain))
+pup_mortality <- vector("list", length(rain))
+
+
+for (k in 1:length(hum)){
+        for (i in 1:length(temp)) {
+                mos_mortality[[k]][i] <- muv_th(temp[i], hum[k], 1)
+        }
+}
+
+for (k in 1:length(rain)){
+        for (i in 1:length(temp)) {
+                lar_mortality[[k]][i] <- mul_tr_t(temp[i], rain[k])
+        }
+}
+
+for (k in 1:length(rain)){
+        for (i in 1:length(temp)) {
+                pup_mortality[[k]][i] <- mup_tr_t(temp[i], rain[k])
+        }
+}
+
+names(mos_mortality) <- c(paste("hum", c(seq(0,4, by=0.1)), sep = "_"))
+names(lar_mortality) <- c(paste("rain", c(seq(0,120, by = 1)), sep = "_"))
+names(pup_mortality) <- c(paste("rain", c(seq(0,120, by = 1)), sep = "_"))
+
+dat1 <- data.frame(mos_mortality)
+dat2 <- data.frame(lar_mortality)
+dat3 <- data.frame(pup_mortality)
+
+dat1$temp <- temp
+dat2$temp <- temp
+dat3$temp <- temp
+
+
+dat1 <- reshape2::melt(data = dat1, id.vars = "temp")
+dat2 <- reshape2::melt(data = dat2, id.vars = "temp")
+dat3 <- reshape2::melt(data = dat3, id.vars = "temp")
+
+
+names(dat1) <- c("Temperature","Hum","MM")
+names(dat2) <- c("Temperature","Rain","LM")
+names(dat3) <- c("Temperature","Rain","PM")
+
+dat1$Humidity <- rep(seq(0,4, by=0.1), each = 401)
+dat2$Prec <- rep(seq(0,120, by = 1), each = 401)
+dat3$Prec <- rep(seq(0,120, by = 1), each = 401)
+
+
+plot_mos_mortality <- ggplot(dat1, aes(x = Temperature, y = Humidity, z = MM)) +
+        stat_contour(geom = "polygon", aes(fill = ..level..)) +
+        geom_tile(aes(fill = MM)) +
+        stat_contour(bins = 15) +
+        labs(title = "Adult mosquito mortality") +
+        PlotOptions()
+
+
+plot_lar_mortality <- ggplot(dat2, aes(x = Temperature, y = Prec, z = LM)) +
+        stat_contour(geom = "polygon", aes(fill = ..level..)) +
+        geom_tile(aes(fill = LM)) +
+        stat_contour(bins = 15) +
+        labs(title = "Larvae mortality") +
+        PlotOptions()
+
+plot_pup_mortality <- ggplot(dat3, aes(x = Temperature, y = Prec, z = PM)) +
+        stat_contour(geom = "polygon", aes(fill = ..level..)) +
+        geom_tile(aes(fill = PM)) +
+        stat_contour(bins = 15)+
+        labs(title = "Pupae mortality") +
+        PlotOptions()
+
+## ---------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+seasonalPlot <- ggplot(monthInfectionsDf %>%
+                               group_by(year, month, GCM) %>%
+                               summarise(avgInf = mean(infections))) +
+        geom_line(aes(month, avgInf, group = factor(year), color = factor(year)))+
+        geom_point(aes(month, avgInf, group = factor(year), color = factor(year)))+
+        xlab("") + ylab("Monthly Infections")+
+        scale_x_continuous(breaks = round(seq(min(monthInfectionsDf$month),
+                                              max(monthInfectionsDf$month), by = 1),1),
+                           labels = c("J","F","M","A","M","J","J","A","S","O","N","D"))+
+        facet_wrap(~GCM)+
+        PlotOptions()+
+        theme(legend.title = element_blank())
+
+
+dailyMosPlot <- ggplot(datDf %>%
+               group_by(days, GCM) %>%
+               summarise(avgNv = mean(Nv))) +
+        geom_line(aes(x=days,y=avgNv))+
+        xlab("") + ylab("Average daily number of Mosquitoes") +
+        scale_x_continuous(breaks = ptsPlots, 
+                           labels = yearLabels) +
+        coord_cartesian(xlim = c(1, ptsPlots[6]))+
+        facet_wrap(~GCM)+
+        PlotOptions()
+
+
+
+ggplot(dat$results) +
+        geom_line(aes(x=time,y=Nh, group=source_scenario_sim, color=source_scenario_sim))
+
+ggplot(dat) +
+        geom_line(aes(x=time,y=s_h, group=source_scenario, color=source_scenario))
+
+ggplot(dat) +
+        geom_line(aes(x=time,y=i_h1, group=source_scenario_sim, color=source_scenario_sim)) +
+  theme(legend.position = "none")
+
+ggplot(dat) +
+        geom_line(aes(x=time,y=Nv, group=source_scenario, color=source_scenario))
+
+ggplot(dat) +
+        geom_line(aes(x=time,y=s_v, group=source_scenario, color=source_scenario))
+
+ggplot(dat) +
+        geom_line(aes(x=time,y=i_v1, group=source_scenario, color=source_scenario))
+
+ggplot(dat) +
+        geom_line(aes(x=time,y=i_h1, group=source_scenario, color=source_scenario))
+
+# +
+#         labs(x = "Year",y = "Vectorial Capacity (per day)")+
+#         geom_line(data = av_line, aes(x=year,y=mean)) +
+#         facet_grid(division ~ rcp, scales = "free_x", space = "free_x")+
+#         geom_hline(data = div_avg, aes(yintercept = mean), linetype="dashed")+
+#         #scale_x_continuous(breaks = seq(1950,2100,10)) +
+#         theme_bw() +
+#         theme(legend.title = element_blank(),
+#               legend.text = element_text(size=8),
+#               legend.position="top",
+#               axis.text.x = element_text(size=8),
+#               axis.text.y = element_text(size=8))
+
+```

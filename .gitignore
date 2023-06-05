@@ -33,7 +33,11 @@ templates/*
 
 # data that can be ignored
 outputs/*
+!outputs/base/
+!.gitkeep
+outputs/base/*
 !outputs/base/Model_inputs.Rda
 !outputs/base/Model_inputs_calibrated.Rda
 !outputs/base/Project_specifications.Rda
-!base/.gitkeep
+
+#!base/.gitkeep

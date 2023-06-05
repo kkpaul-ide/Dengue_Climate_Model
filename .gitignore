@@ -40,4 +40,4 @@ outputs/base/*
 !outputs/base/Model_inputs_calibrated.Rda
 !outputs/base/Project_specifications.Rda
 
-#!base/.gitkeep
+!outputs/base/.gitkeep

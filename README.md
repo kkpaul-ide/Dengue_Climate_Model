@@ -26,6 +26,11 @@ Contains the dengue transmission model coded in R and specific R functions and s
 ## data
 Contains some raw data used in the analysis. Temperature output of ISIMIP models are available as netCDF files at https://www.isimip.org/outputdata/isimip-data-on-the-esgf-server/ . Data for weather station locations need to be extraced first with the help of Climate Data Operator (CDO) (https://doi.org/10.5281/zenodo.3539275), a collection of command line operators, to be able to use user defined functions and analysis scripts.
 
+## outputs
+Contains R data pertaining to project specifications and calibrated model inputs.
+
+## templates
+Contains parameter values, ranges and type available from literature that has been used to run the model. 
 
 *0-mosquito_paramater_fitting.Rmd Script used to (re)fit a Briere function to published mosquito data to generate best estimates and uncertainty in key variables that are dependent on temperature.
 

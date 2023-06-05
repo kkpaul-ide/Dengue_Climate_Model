@@ -18,7 +18,25 @@ The main developers for the project code are Dr Kishor K. Paul and Dr Richard T.
 
 # Project organization
 
-*Main directory sub-directories*
+*The project is organized with materials in main directory and additional code and data in sub-directories*
+
+* 0-mosquito_paramater_fitting.Rmd Script used to (re)fit a Briere function to published mosquito data to generate best estimates and uncertainty in key variables that are dependent on temperature.
+
+* 0-mosquito_paramater_mortality_fitting.Rmd Script used to (re)fit a Quadratic function to published mosquito data to generate best estimates and uncertainty in key variables that are dependent on temperature, humidity, and rainfall.
+
+* 0-setup_project.Rmd Script used to set-up a dengue modelling project.
+
+* 1-setup_model.Rmd Script used to set-up specific dengue model parameters.
+
+* 2-test_calibrate_model.Rmd Script used to simulate the specified dengue model with the saved input parameters and data and then calibrate parameters.
+
+* 3-setup_sims.Rmd Script used to set-up simulations of a specific dengue model.
+
+* 4-run_scenarios.Rmd Script used to run simulations of a specific dengue model for available scenarios.
+
+* 5-observed_analysis.Rmd Script used to analyse model output for the period 1995-2014.
+
+* 6-projections_analysis.Rmd Script used to analyse model output for 2030-2049 and 2080-2099.
 
 ## code
 Contains the dengue transmission model coded in R and specific R functions and scripts of used for data processing, reshaping ISIMIP netCDF data files to run dengue transmission model and analysis of the model simulation output.
@@ -32,20 +50,3 @@ Contains R data pertaining to project specifications and calibrated model inputs
 ## templates
 Contains parameter values, ranges and type available from literature that has been used to run the model. 
 
-*0-mosquito_paramater_fitting.Rmd Script used to (re)fit a Briere function to published mosquito data to generate best estimates and uncertainty in key variables that are dependent on temperature.
-
-*0-mosquito_paramater_mortality_fitting.Rmd Script used to (re)fit a Quadratic function to published mosquito data to generate best estimates and uncertainty in key variables that are dependent on temperature, humidity, and rainfall.
-
-*0-setup_project.Rmd Script used to set-up a dengue modelling project.
-
-*1-setup_model.Rmd Script used to set-up specific dengue model parameters.
-
-*2-test_calibrate_model.Rmd Script used to simulate the specified dengue model with the saved input parameters and data and then calibrate parameters.
-
-*3-setup_sims.Rmd Script used to set-up simulations of a specific dengue model.
-
-*4-run_scenarios.Rmd Script used to run simulations of a specific dengue model for available scenarios.
-
-*5-observed_analysis.Rmd Script used to analyse model output for the period 1995-2014.
-
-*6-projections_analysis.Rmd Script used to analyse model output for 2030-2049 and 2080-2099.

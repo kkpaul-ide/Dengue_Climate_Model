@@ -36,6 +36,4 @@ outputs/*
 !outputs/base/Model_inputs.Rda
 !outputs/base/Model_inputs_calibrated.Rda
 !outputs/base/Project_specifications.Rda
-!.gitkeep
-!outputs/base/.gitkeep
 !base/.gitkeep
